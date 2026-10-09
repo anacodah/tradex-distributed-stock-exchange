@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import NotificationCenter from './NotificationCenter';
+import api from '../api/axios';
 import { 
   LayoutDashboard, 
   TrendingUp, 
@@ -13,11 +15,28 @@ import {
   Database, 
   GitMerge, 
   Settings,
-  LogOut
+  LogOut,
+  Bell
 } from 'lucide-react';
 
 const Sidebar: React.FC = () => {
   const { user, logout } = useAuth();
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const res = await api.get('/notifications/unread-count');
+        setUnreadCount(res.data.unreadCount || 0);
+      } catch (err) {
+        // ignore if not logged in
+      }
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <aside className="sidebar">
@@ -35,11 +54,47 @@ const Sidebar: React.FC = () => {
             <span className="username">{user?.username}</span>
             <span className="role-tag">{user?.roles?.[0] || 'USER'}</span>
           </div>
+          <button 
+            onClick={() => setShowNotifications(!showNotifications)} 
+            className="icon-notif-btn" 
+            title="Notifications"
+            style={{ position: 'relative', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px' }}
+          >
+            <Bell size={16} />
+            {unreadCount > 0 && (
+              <span style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                background: '#ef4444',
+                color: 'white',
+                borderRadius: '9999px',
+                fontSize: '10px',
+                padding: '1px 5px',
+                fontWeight: 'bold'
+              }}>
+                {unreadCount}
+              </span>
+            )}
+          </button>
           <button onClick={logout} className="icon-logout-btn" title="Logout">
             <LogOut size={16} />
           </button>
         </div>
       </div>
+
+      {showNotifications && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '260px',
+          zIndex: 1000,
+          width: '380px',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)'
+        }}>
+          <NotificationCenter onClose={() => setShowNotifications(false)} />
+        </div>
+      )}
 
       <nav className="sidebar-nav">
         <div className="nav-section">
@@ -59,6 +114,12 @@ const Sidebar: React.FC = () => {
           <NavLink to="/wallet" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
             <Wallet size={18} /> Wallet
           </NavLink>
+          <NavLink to="/transactions" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
+            <Clock size={18} /> Transactions & Ledger
+          </NavLink>
+          <NavLink to="/audit" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
+            <ShieldCheck size={18} /> Audit Trail
+          </NavLink>
         </div>
 
         <div className="nav-section">
@@ -72,11 +133,11 @@ const Sidebar: React.FC = () => {
           <NavLink to="/elections" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
             <ShieldCheck size={18} /> Elections (Exp 4)
           </NavLink>
-          <div className="nav-link disabled" title="Coming in Phase 5">
-            <Database size={18} /> Replication (Phase 5)
-          </div>
-          <div className="nav-link disabled" title="Coming in Phase 5">
-            <GitMerge size={18} /> Load Balancing (Phase 5)
+          <NavLink to="/replication" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
+            <Database size={18} /> Replication (Phase 9)
+          </NavLink>
+          <div className="nav-link disabled" title="Coming in Phase 10">
+            <GitMerge size={18} /> Load Balancing (Phase 10)
           </div>
           <div className="nav-link disabled" title="Coming in Phase 5">
             <Settings size={18} /> Fault Tolerance (Phase 5)

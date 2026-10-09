@@ -57,8 +57,12 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-tradex}
+      - RMI_PORT=1099
+      - RMI_HOST=node1
+      - NODE_PEERS=node1:1099,node2:1099,node3:1099
     ports:
       - "8081:8080"
+      - "1099:1099"
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,8 +85,12 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-tradex}
+      - RMI_PORT=1099
+      - RMI_HOST=node2
+      - NODE_PEERS=node1:1099,node2:1099,node3:1099
     ports:
       - "8082:8080"
+      - "1100:1099"
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,8 +113,12 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-tradex}
+      - RMI_PORT=1099
+      - RMI_HOST=node3
+      - NODE_PEERS=node1:1099,node2:1099,node3:1099
     ports:
       - "8083:8080"
+      - "1101:1099"
     depends_on:
       postgres:
         condition: service_healthy

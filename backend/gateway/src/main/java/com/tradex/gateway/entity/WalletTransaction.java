@@ -16,8 +16,8 @@ public class WalletTransaction {
     @JoinColumn(name = "wallet_id", nullable = false)
     private Wallet wallet;
 
-    @Column(nullable = false, length = 20)
-    private String type; // DEPOSIT, WITHDRAWAL, TRADE_DEBIT, TRADE_CREDIT
+    @Column(nullable = false, length = 30)
+    private String type; // DEPOSIT, WITHDRAWAL, TRADE_DEBIT, TRADE_CREDIT, FUND_RESERVATION, FUND_RELEASE, COMPENSATING_CREDIT, COMPENSATING_DEBIT
 
     @Column(nullable = false, precision = 15, scale = 4)
     private BigDecimal amount;
@@ -32,6 +32,15 @@ public class WalletTransaction {
 
     @Column(name = "reference_id")
     private Long referenceId;
+
+    @Column(name = "correlation_id", length = 64)
+    private String correlationId;
+
+    @Column(name = "idempotency_key", length = 64)
+    private String idempotencyKey;
+
+    @Column(name = "status", length = 20)
+    private String status = "COMPLETED";
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
@@ -53,5 +62,11 @@ public class WalletTransaction {
     public void setDescription(String description) { this.description = description; }
     public Long getReferenceId() { return referenceId; }
     public void setReferenceId(Long referenceId) { this.referenceId = referenceId; }
+    public String getCorrelationId() { return correlationId; }
+    public void setCorrelationId(String correlationId) { this.correlationId = correlationId; }
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 }

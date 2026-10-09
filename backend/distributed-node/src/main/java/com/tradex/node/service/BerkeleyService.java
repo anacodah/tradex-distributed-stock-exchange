@@ -15,6 +15,10 @@ public class BerkeleyService {
 
     // Simulated local physical clock offset in milliseconds (randomized per node at start or configurable)
     private double clockOffsetMs;
+    // Simulated clock drift in milliseconds per second (e.g. +1.5 ms/s)
+    private double driftRateMsPerSec = 0.0;
+    private long lastDriftUpdateTime = System.currentTimeMillis();
+
     private final RestTemplate restTemplate;
     private final LamportClockService lamportClockService;
 
@@ -25,14 +29,44 @@ public class BerkeleyService {
         this.lamportClockService = lamportClockService;
         // Seed default offset per node
         this.clockOffsetMs = (Math.random() * 200) - 100; // e.g. -100ms to +100ms
+        this.driftRateMsPerSec = (Math.random() * 2.0) - 1.0; // small drift
     }
 
     public synchronized double getClockOffsetMs() {
+        applyElapsedDrift();
         return clockOffsetMs;
     }
 
     public synchronized void setClockOffsetMs(double offset) {
         this.clockOffsetMs = offset;
+        this.lastDriftUpdateTime = System.currentTimeMillis();
+    }
+
+    public synchronized double getDriftRateMsPerSec() {
+        return driftRateMsPerSec;
+    }
+
+    public synchronized void setDriftRateMsPerSec(double driftRate) {
+        applyElapsedDrift();
+        this.driftRateMsPerSec = driftRate;
+    }
+
+    /**
+     * Simulated physical clock reading: System.currentTimeMillis() + offset + accumulated drift.
+     * Host OS time is strictly untouched.
+     */
+    public synchronized long getSimulatedPhysicalTimeMs() {
+        applyElapsedDrift();
+        return System.currentTimeMillis() + (long) clockOffsetMs;
+    }
+
+    private void applyElapsedDrift() {
+        long now = System.currentTimeMillis();
+        long elapsedSec = (now - lastDriftUpdateTime) / 1000;
+        if (elapsedSec > 0 && driftRateMsPerSec != 0.0) {
+            this.clockOffsetMs += (elapsedSec * driftRateMsPerSec);
+            this.lastDriftUpdateTime = now;
+        }
     }
 
     public Map<String, Object> synchronizeClocks() {

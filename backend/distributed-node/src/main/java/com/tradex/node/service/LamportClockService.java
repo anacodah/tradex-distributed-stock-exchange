@@ -25,6 +25,21 @@ public class LamportClockService {
         return clock.get();
     }
 
+    public synchronized long getTime() {
+        return clock.get();
+    }
+
+    public synchronized long tick() {
+        return clock.incrementAndGet();
+    }
+
+    public synchronized long update(long receivedTimestamp) {
+        long maxClock = Math.max(clock.get(), receivedTimestamp);
+        long newClock = maxClock + 1;
+        clock.set(newClock);
+        return newClock;
+    }
+
     public synchronized DistributedEvent recordLocalEvent(String description) {
         long current = clock.incrementAndGet();
         DistributedEvent event = new DistributedEvent(

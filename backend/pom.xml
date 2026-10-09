@@ -22,6 +22,7 @@
     </properties>
 
     <modules>
+        <module>common</module>
         <module>gateway</module>
         <module>distributed-node</module>
     </modules>

@@ -1,18 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api/axios';
-import { Wallet as WalletIcon, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Wallet as WalletIcon, ArrowUpRight, ArrowDownLeft, Lock, DollarSign } from 'lucide-react';
 
 interface WalletData {
   id: number;
   balance: number;
-  currency: string;
+  availableBalance: number;
+  reservedBalance: number;
+  currency?: string;
 }
 
 interface WalletTransaction {
   id: number;
   type: string;
   amount: number;
-  timestamp: string;
+  balanceBefore?: number;
+  balanceAfter?: number;
+  createdAt?: string;
+  timestamp?: string;
   description: string;
 }
 
@@ -64,7 +69,7 @@ const WalletPage: React.FC = () => {
       fetchWallet();
     } catch (err: any) {
       setMessage({
-        text: err.response?.data?.message || `Failed to ${actionType}`,
+        text: err.response?.data?.message || err.response?.data?.error || `Failed to ${actionType}`,
         type: 'error'
       });
     } finally {
@@ -77,44 +82,69 @@ const WalletPage: React.FC = () => {
   return (
     <div className="wallet-container">
       <div className="dashboard-header">
-        <h1>TradeX Wallet</h1>
-        <p>Manage your cash balance, deposits, withdrawals, and ledger</p>
+        <h1>TradeX Virtual Wallet</h1>
+        <p>Manage paper-trading funds, available capital, and immutable ledger entries</p>
+      </div>
+
+      {/* 3-Column Metrics Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div className="card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Total Balance</span>
+            <WalletIcon size={18} style={{ color: 'var(--yellow)' }} />
+          </div>
+          <div style={{ fontSize: '26px', fontWeight: 700 }}>
+            ${wallet?.balance !== undefined ? Number(wallet.balance).toFixed(2) : '0.00'}
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Total equity in virtual wallet</div>
+        </div>
+
+        <div className="card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Available Balance</span>
+            <DollarSign size={18} style={{ color: 'var(--green)' }} />
+          </div>
+          <div style={{ fontSize: '26px', fontWeight: 700, color: 'var(--green)' }}>
+            ${wallet?.availableBalance !== undefined ? Number(wallet.availableBalance).toFixed(2) : '0.00'}
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Available to buy stocks</div>
+        </div>
+
+        <div className="card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Reserved Balance</span>
+            <Lock size={18} style={{ color: '#f59e0b' }} />
+          </div>
+          <div style={{ fontSize: '26px', fontWeight: 700, color: '#f59e0b' }}>
+            ${wallet?.reservedBalance !== undefined ? Number(wallet.reservedBalance).toFixed(2) : '0.00'}
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Locked in pending limit orders</div>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '28px' }}>
-        {/* Wallet Balance Card */}
-        <div className="card balance-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ margin: 0 }}>Total Cash Balance</h3>
-            <WalletIcon size={24} style={{ color: 'var(--yellow)' }} />
-          </div>
-          <div style={{ fontSize: '32px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '16px' }}>
-            ${wallet?.balance !== undefined ? Number(wallet.balance).toFixed(2) : '0.00'}
-            <span style={{ fontSize: '14px', color: 'var(--text-muted)', marginLeft: '8px' }}>{wallet?.currency || 'USD'}</span>
-          </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
+        {/* Deposit/Withdraw Form */}
+        <div className="card form-card">
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
             <button 
               type="button"
               className={`tab-btn ${actionType === 'deposit' ? 'active buy' : ''}`}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-              onClick={() => setActionType('deposit')}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+              onClick={() => { setActionType('deposit'); setMessage(null); }}
             >
-              <ArrowDownLeft size={16} /> Deposit Funds
+              <ArrowDownLeft size={16} /> Deposit
             </button>
             <button 
               type="button"
               className={`tab-btn ${actionType === 'withdraw' ? 'active buy' : ''}`}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-              onClick={() => setActionType('withdraw')}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+              onClick={() => { setActionType('withdraw'); setMessage(null); }}
             >
-              <ArrowUpRight size={16} /> Withdraw Funds
+              <ArrowUpRight size={16} /> Withdraw
             </button>
           </div>
-        </div>
 
-        {/* Form Card */}
-        <div className="card form-card">
-          <h3>{actionType === 'deposit' ? 'Deposit Funds' : 'Withdraw Funds'}</h3>
+          <h3>{actionType === 'deposit' ? 'Deposit Virtual Cash' : 'Withdraw Virtual Cash'}</h3>
           {message && (
             <div className={`alert ${message.type === 'success' ? 'alert-success' : 'alert-error'}`}>
               {message.text}
@@ -128,7 +158,7 @@ const WalletPage: React.FC = () => {
                 type="number" 
                 step="0.01" 
                 min="1" 
-                placeholder="0.00"
+                placeholder="1000.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="form-input"
@@ -141,11 +171,22 @@ const WalletPage: React.FC = () => {
             </button>
           </form>
         </div>
+
+        {/* Informational Panel */}
+        <div className="card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <h3 style={{ marginTop: 0 }}>Financial Integrity Notice</h3>
+          <ul style={{ paddingLeft: '20px', color: 'var(--text-muted)', fontSize: '13px', lineHeight: '1.7' }}>
+            <li>Paper trading uses virtual simulator funds only. No real payment processing is performed.</li>
+            <li>All cash movements write append-only transaction entries into the database ledger.</li>
+            <li>Pending buy orders lock funds in <code>Reserved Balance</code> to prevent overselling or negative balances under concurrent orders.</li>
+            <li>Every request is authorized server-side for the logged-in user context.</li>
+          </ul>
+        </div>
       </div>
 
       {/* Transaction History Table */}
       <div className="card full-width">
-        <h3>Transaction History</h3>
+        <h3>Wallet Transaction History</h3>
         {transactions.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', fontSize: '14px', padding: '16px 0' }}>No transactions recorded yet.</p>
         ) : (
@@ -155,6 +196,8 @@ const WalletPage: React.FC = () => {
                 <th>ID</th>
                 <th>Type</th>
                 <th>Amount</th>
+                <th>Balance Before</th>
+                <th>Balance After</th>
                 <th>Description</th>
                 <th>Date & Time</th>
               </tr>
@@ -174,8 +217,10 @@ const WalletPage: React.FC = () => {
                     <td className={isCredit ? 'text-green' : 'text-red'}>
                       {isCredit ? '+' : '-'}${Number(tx.amount || 0).toFixed(2)}
                     </td>
+                    <td>${tx.balanceBefore !== undefined ? Number(tx.balanceBefore).toFixed(2) : '-'}</td>
+                    <td>${tx.balanceAfter !== undefined ? Number(tx.balanceAfter).toFixed(2) : '-'}</td>
                     <td>{tx.description || '-'}</td>
-                    <td>{new Date(tx.timestamp || Date.now()).toLocaleString()}</td>
+                    <td>{new Date(tx.createdAt || tx.timestamp || Date.now()).toLocaleString()}</td>
                   </tr>
                 );
               })}

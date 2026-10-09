@@ -109,6 +109,74 @@ public class DistributedProxyController {
         }
     }
 
+    @PostMapping("/berkeley/drift/{nodeId}")
+    public ResponseEntity<?> configureDrift(@PathVariable String nodeId, @RequestBody Map<String, Object> body) {
+        try {
+            return restTemplate.postForEntity(getNodeUrl(nodeId) + "/clock/berkeley/drift", body, Map.class);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Node " + nodeId + " unreachable"));
+        }
+    }
+
+    @GetMapping("/berkeley/history/{nodeId}")
+    public ResponseEntity<?> getBerkeleyHistory(@PathVariable String nodeId) {
+        try {
+            return restTemplate.getForEntity(getNodeUrl(nodeId) + "/clock/berkeley/history", List.class);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Node " + nodeId + " unreachable"));
+        }
+    }
+
+    // ==========================================
+    // VECTOR CLOCK PROXIES
+    // ==========================================
+    @GetMapping("/vector/{nodeId}")
+    public ResponseEntity<?> getVectorClock(@PathVariable String nodeId) {
+        try {
+            return restTemplate.getForEntity(getNodeUrl(nodeId) + "/clock/vector", Map.class);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Node " + nodeId + " unreachable"));
+        }
+    }
+
+    @PostMapping("/vector/event/{nodeId}")
+    public ResponseEntity<?> triggerVectorEvent(@PathVariable String nodeId, @RequestBody(required = false) Map<String, String> body) {
+        try {
+            return restTemplate.postForEntity(getNodeUrl(nodeId) + "/clock/vector/event", body, Map.class);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Node " + nodeId + " unreachable"));
+        }
+    }
+
+    @PostMapping("/vector/send")
+    public ResponseEntity<?> sendVectorMessage(@RequestBody Map<String, String> body) {
+        String fromNode = body.get("fromNode");
+        String toNode = body.get("toNode");
+        try {
+            return restTemplate.postForEntity(getNodeUrl(fromNode) + "/clock/vector/send/" + toNode, null, Map.class);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Failed to send vector message from " + fromNode + " to " + toNode));
+        }
+    }
+
+    @GetMapping("/vector/events/{nodeId}")
+    public ResponseEntity<?> getVectorEvents(@PathVariable String nodeId) {
+        try {
+            return restTemplate.getForEntity(getNodeUrl(nodeId) + "/clock/vector/events", List.class);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Node " + nodeId + " unreachable"));
+        }
+    }
+
+    @PostMapping("/vector/compare")
+    public ResponseEntity<?> compareVectorClocks(@RequestBody Map<String, Object> body) {
+        try {
+            return restTemplate.postForEntity(getNodeUrl("node1") + "/clock/vector/compare", body, Map.class);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Comparison failed: " + e.getMessage()));
+        }
+    }
+
     // ==========================================
     // ELECTION PROXIES
     // ==========================================

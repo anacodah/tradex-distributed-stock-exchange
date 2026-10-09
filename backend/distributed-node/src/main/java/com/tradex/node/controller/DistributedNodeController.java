@@ -24,15 +24,18 @@ public class DistributedNodeController {
     private final LamportClockService clockService;
     private final BerkeleyService berkeleyService;
     private final LeaderElectionService electionService;
+    private final com.tradex.node.service.VectorClockService vectorClockService;
     private final RestTemplate restTemplate;
 
     public DistributedNodeController(LamportClockService clockService,
                                      BerkeleyService berkeleyService,
                                      LeaderElectionService electionService,
+                                     com.tradex.node.service.VectorClockService vectorClockService,
                                      RestTemplate restTemplate) {
         this.clockService = clockService;
         this.berkeleyService = berkeleyService;
         this.electionService = electionService;
+        this.vectorClockService = vectorClockService;
         this.restTemplate = restTemplate;
     }
 
@@ -123,12 +126,30 @@ public class DistributedNodeController {
     }
 
     // ==========================================
-    // BERKELEY ALGORITHM APIs
+    // BERKELEY ALGORITHM & PHYSICAL CLOCKS APIs
     // ==========================================
     @GetMapping("/clock/berkeley/status")
     public ResponseEntity<Map<String, Object>> berkeleyStatus() {
         return ResponseEntity.ok(Map.of(
                 "nodeName", nodeName,
+                "clockOffsetMs", berkeleyService.getClockOffsetMs(),
+                "driftRateMsPerSec", berkeleyService.getDriftRateMsPerSec(),
+                "simulatedPhysicalTimeMs", berkeleyService.getSimulatedPhysicalTimeMs(),
+                "wallClockTimeMs", System.currentTimeMillis()
+        ));
+    }
+
+    @PostMapping("/clock/berkeley/drift")
+    public ResponseEntity<Map<String, Object>> configureDrift(@RequestBody Map<String, Object> body) {
+        if (body.containsKey("driftRateMsPerSec")) {
+            berkeleyService.setDriftRateMsPerSec(((Number) body.get("driftRateMsPerSec")).doubleValue());
+        }
+        if (body.containsKey("offsetMs")) {
+            berkeleyService.setClockOffsetMs(((Number) body.get("offsetMs")).doubleValue());
+        }
+        return ResponseEntity.ok(Map.of(
+                "status", "UPDATED",
+                "driftRateMsPerSec", berkeleyService.getDriftRateMsPerSec(),
                 "clockOffsetMs", berkeleyService.getClockOffsetMs()
         ));
     }
@@ -148,6 +169,86 @@ public class DistributedNodeController {
     @GetMapping("/clock/berkeley/history")
     public ResponseEntity<List<Map<String, Object>>> berkeleyHistory() {
         return ResponseEntity.ok(berkeleyService.getSyncHistory());
+    }
+
+    // ==========================================
+    // VECTOR CLOCK APIs
+    // ==========================================
+    @GetMapping("/clock/vector")
+    public ResponseEntity<Map<String, Object>> getVectorClock() {
+        var vc = vectorClockService.getVectorClock();
+        return ResponseEntity.ok(Map.of(
+                "nodeName", nodeName,
+                "vector", vc.getClockMap(),
+                "vectorString", vc.serialize()
+        ));
+    }
+
+    @PostMapping("/clock/vector/event")
+    public ResponseEntity<Map<String, Object>> createVectorEvent(@RequestBody(required = false) Map<String, String> body) {
+        String desc = (body != null && body.containsKey("description")) ? body.get("description") : "Local event on " + nodeName;
+        var vc = vectorClockService.recordLocalEvent(desc);
+        return ResponseEntity.ok(Map.of("status", "SUCCESS", "vector", vc.getClockMap()));
+    }
+
+    @PostMapping("/clock/vector/send/{targetNode}")
+    public ResponseEntity<Map<String, Object>> sendVectorMessage(@PathVariable String targetNode) {
+        var sentVc = vectorClockService.prepareSendEvent(targetNode, "MSG");
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("sourceNode", nodeName);
+            payload.put("vector", sentVc.getClockMap());
+            payload.put("message", "Vector ping from " + nodeName);
+
+            ResponseEntity<Map> response = restTemplate.postForEntity("http://" + targetNode + ":8080/api/clock/vector/receive", payload, Map.class);
+            return ResponseEntity.ok(Map.of("status", "SUCCESS", "sentVector", sentVc.getClockMap(), "targetResponse", response.getBody()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("status", "FAILED", "error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/clock/vector/receive")
+    public ResponseEntity<Map<String, Object>> receiveVectorMessage(@RequestBody Map<String, Object> payload) {
+        String sourceNode = (String) payload.get("sourceNode");
+        Map<String, Object> rawMap = (Map<String, Object>) payload.get("vector");
+        Map<String, Long> converted = new HashMap<>();
+        if (rawMap != null) {
+            rawMap.forEach((k, v) -> converted.put(k, ((Number) v).longValue()));
+        }
+        com.tradex.common.model.VectorClock incoming = new com.tradex.common.model.VectorClock(converted);
+        var newVc = vectorClockService.recordReceiveEvent(sourceNode, incoming, "MSG");
+        return ResponseEntity.ok(Map.of(
+                "status", "RECEIVED",
+                "newVector", newVc.getClockMap()
+        ));
+    }
+
+    @GetMapping("/clock/vector/events")
+    public ResponseEntity<List<Map<String, Object>>> getVectorEvents() {
+        return ResponseEntity.ok(vectorClockService.getVectorEventHistory());
+    }
+
+    @PostMapping("/clock/vector/compare")
+    public ResponseEntity<Map<String, Object>> compareVectors(@RequestBody Map<String, Object> body) {
+        Map<String, Object> v1Map = (Map<String, Object>) body.get("v1");
+        Map<String, Object> v2Map = (Map<String, Object>) body.get("v2");
+
+        Map<String, Long> c1 = new HashMap<>();
+        Map<String, Long> c2 = new HashMap<>();
+        if (v1Map != null) v1Map.forEach((k, v) -> c1.put(k, ((Number) v).longValue()));
+        if (v2Map != null) v2Map.forEach((k, v) -> c2.put(k, ((Number) v).longValue()));
+
+        var vc1 = new com.tradex.common.model.VectorClock(c1);
+        var vc2 = new com.tradex.common.model.VectorClock(c2);
+
+        var relation = vc1.compareCausality(vc2);
+        return ResponseEntity.ok(Map.of(
+                "v1", vc1.getClockMap(),
+                "v2", vc2.getClockMap(),
+                "relationship", relation.name(),
+                "v1HappenedBeforeV2", relation == com.tradex.common.model.VectorClock.CausalOrder.BEFORE,
+                "isConcurrent", relation == com.tradex.common.model.VectorClock.CausalOrder.CONCURRENT
+        ));
     }
 
     // ==========================================
