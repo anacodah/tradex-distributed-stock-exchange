@@ -17,11 +17,14 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private final MarketWebSocketHandler marketWebSocketHandler;
     private final NotificationWebSocketHandler notificationWebSocketHandler;
+    private final ClusterEventsWebSocketHandler clusterEventsWebSocketHandler;
 
     public WebSocketConfig(MarketWebSocketHandler marketWebSocketHandler,
-                           NotificationWebSocketHandler notificationWebSocketHandler) {
+                           NotificationWebSocketHandler notificationWebSocketHandler,
+                           ClusterEventsWebSocketHandler clusterEventsWebSocketHandler) {
         this.marketWebSocketHandler = marketWebSocketHandler;
         this.notificationWebSocketHandler = notificationWebSocketHandler;
+        this.clusterEventsWebSocketHandler = clusterEventsWebSocketHandler;
     }
 
     @Override
@@ -29,6 +32,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
         registry.addHandler(marketWebSocketHandler, "/ws/market")
                 .setAllowedOrigins("*");
         registry.addHandler(notificationWebSocketHandler, "/ws/notifications")
+                .setAllowedOrigins("*");
+        registry.addHandler(clusterEventsWebSocketHandler, "/ws/cluster")
                 .setAllowedOrigins("*");
     }
 }

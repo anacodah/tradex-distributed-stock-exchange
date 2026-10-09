@@ -107,3 +107,30 @@ A distributed, high-performance stock exchange and trading platform with authent
    docker-compose up --build
    ```
 3. Open your browser to `http://localhost:3000`.
+
+---
+
+## Phase 13: Analytics, Administration and Observability
+
+### 1. Trading Analytics Service
+- **Persisted Volume & Trade Aggregations**: Queries durable records (`TradeRepository`, `OrderRepository`, and `StockRepository`) to compute executed trade volume, total fill values, and trade counts without synthetic inflation.
+- **Order Flow & Execution Metrics**: Computes exact fill rates, cancellation rates, and rejection rates, distinguishing buy volume vs. sell volume ratios.
+- **Active Instruments & Market Movers**: Aggregates per-instrument volume and identifies top gainers/losers by evaluating active prices against initial market baseline prices.
+
+### 2. Administrative Console
+- **Account & System Governance**: Role-protected views listing registered users, account lock statuses, balances, and system orders.
+- **Audited Emergency Circuit Breaker**: Allows administrators to pause and resume all exchange order routing dynamically, emitting durable audit events and notifying connected clients in real-time.
+
+### 3. Unified Distributed-Systems Control Center
+- **Consolidated Dashboard**: A single control view (`/control-center`) integrating tabs for:
+  - **Cluster Topology & Node Health**
+  - **Logical (Lamport & Vector) and Physical Clocks**
+  - **Bully & Ring Elections**
+  - **Primary-Backup Replication Lag & Ack History**
+  - **Fault Injection & Failover Recovery**
+  - **Distributed Load Balancing & Strategy Switching**
+
+### 4. Real-time Telemetry & WebSockets
+- **Cluster Events Stream (`/ws/cluster`)**: Broadcasts node health transitions, leader re-elections, replication pulses, and circuit-breaker triggers.
+- **Resilient Frontend Handlers**: WebSocket connections handle reconnections, authentication tokens, and graceful degradation during network partitions.
+

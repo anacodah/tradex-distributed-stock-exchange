@@ -17,7 +17,10 @@ import {
   Settings,
   LogOut,
   Bell,
-  Activity
+  Activity,
+  BarChart3,
+  ShieldAlert,
+  Network
 } from 'lucide-react';
 
 const Sidebar: React.FC = () => {
@@ -118,13 +121,22 @@ const Sidebar: React.FC = () => {
           <NavLink to="/transactions" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
             <Clock size={18} /> Transactions & Ledger
           </NavLink>
+          <NavLink to="/analytics" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
+            <BarChart3 size={18} /> Analytics (P13)
+          </NavLink>
           <NavLink to="/audit" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
             <ShieldCheck size={18} /> Audit Trail
+          </NavLink>
+          <NavLink to="/admin" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
+            <ShieldAlert size={18} /> Admin Console
           </NavLink>
         </div>
 
         <div className="nav-section">
           <div className="section-title">DISTRIBUTED LAB</div>
+          <NavLink to="/control-center" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
+            <Network size={18} /> Unified Control (P13)
+          </NavLink>
           <NavLink to="/nodes" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
             <Server size={18} /> Distributed Nodes
           </NavLink>

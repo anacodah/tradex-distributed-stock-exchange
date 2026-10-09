@@ -18,6 +18,9 @@ import ClusterNodes from './pages/ClusterNodes';
 import ReplicationDashboard from './pages/ReplicationDashboard';
 import FailoverRecovery from './pages/FailoverRecovery';
 import LoadBalancingDashboard from './pages/LoadBalancingDashboard';
+import Analytics from './pages/Analytics';
+import AdminConsole from './pages/AdminConsole';
+import DistributedControlCenter from './pages/DistributedControlCenter';
 import './App.css';
 
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -53,6 +56,9 @@ function App() {
             <Route path="/replication" element={<AppLayout><ReplicationDashboard /></AppLayout>} />
             <Route path="/failover" element={<AppLayout><FailoverRecovery /></AppLayout>} />
             <Route path="/load-balancer" element={<AppLayout><LoadBalancingDashboard /></AppLayout>} />
+            <Route path="/analytics" element={<AppLayout><Analytics /></AppLayout>} />
+            <Route path="/admin" element={<AppLayout><AdminConsole /></AppLayout>} />
+            <Route path="/control-center" element={<AppLayout><DistributedControlCenter /></AppLayout>} />
             
             {/* Redirect root to dashboard */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

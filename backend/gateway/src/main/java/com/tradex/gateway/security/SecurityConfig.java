@@ -37,9 +37,9 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .cors(cors -> cors.configure(http))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/health", "/api/status", "/api/auth/register", "/api/auth/login").permitAll()
+                .requestMatchers("/api/health", "/api/status", "/api/auth/register", "/api/auth/login", "/ws/**").permitAll()
                 .requestMatchers("/api/market/**", "/api/distributed/**", "/api/cluster/**").permitAll()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**").authenticated()
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session
