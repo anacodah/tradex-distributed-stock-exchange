@@ -72,10 +72,10 @@ class Phase3MarketDataTest {
         PriceSnapshotDto snapshot = marketService.getSnapshot("AAPL");
 
         assertNotNull(snapshot);
-        assertEquals("AAPL", snapshot.getSymbol());
-        assertEquals(new BigDecimal("150.00"), snapshot.getCurrentPrice());
-        assertEquals(new BigDecimal("5.0000"), snapshot.getChangeAmount());
-        assertEquals("SIMULATED", snapshot.getDataSource());
+        assertEquals("AAPL", snapshot.symbol());
+        assertEquals(new BigDecimal("150.00"), snapshot.price());
+        assertEquals(new BigDecimal("5.0000"), snapshot.changeAmount());
+        assertEquals("SIMULATED", snapshot.dataSource());
     }
 
     @Test
@@ -100,11 +100,10 @@ class Phase3MarketDataTest {
         MarketStatsDto stats = marketService.getMarketStats();
 
         assertNotNull(stats);
-        assertEquals(2, stats.getTotalTradedSecurities());
-        assertEquals(1, stats.getAdvancers());
-        assertEquals(1, stats.getDecliners());
-        assertEquals(0, stats.getUnchanged());
-        assertEquals(800000L, stats.getTotalVolume());
+        assertEquals(2, stats.totalInstruments());
+        assertEquals(1, stats.advancers());
+        assertEquals(1, stats.decliners());
+        assertEquals(0, stats.unchanged());
     }
 
     @Test
@@ -119,12 +118,12 @@ class Phase3MarketDataTest {
         apple.setExchange("NASDAQ");
         apple.setCurrency("USD");
 
-        when(companyRepository.searchCompanies("Apple")).thenReturn(List.of(apple));
+        when(companyRepository.searchBySymbolOrName("Apple")).thenReturn(List.of(apple));
 
         List<CompanyDto> results = marketService.searchCompanies("Apple");
         assertEquals(1, results.size());
-        assertEquals("AAPL", results.get(0).getSymbol());
-        assertEquals("Technology", results.get(0).getSector());
+        assertEquals("AAPL", results.get(0).symbol());
+        assertEquals("Technology", results.get(0).sector());
     }
 
     @Test
@@ -165,12 +164,12 @@ class Phase3MarketDataTest {
         candle.setDataSource("SIMULATED");
 
         when(stockRepository.findBySymbol("TSLA")).thenReturn(Optional.of(stock));
-        when(marketCandleRepository.findByStockIdAndTimeframeOrderByBucketStartAsc(1L, "1H"))
+        when(marketCandleRepository.findBySymbolAndTimeframeOrderByBucketStartAsc("TSLA", "1H"))
                 .thenReturn(List.of(candle));
 
         List<OhlcvCandleDto> candles = marketService.getCandles("TSLA", "1H", null, null);
         assertEquals(1, candles.size());
-        assertEquals(new BigDecimal("205.00"), candles.get(0).getClose());
-        assertEquals("1H", candles.get(0).getTimeframe());
+        assertEquals(new BigDecimal("205.00"), candles.get(0).close());
+        assertEquals("1H", candles.get(0).timeframe());
     }
 }

@@ -231,13 +231,15 @@ public class TradingService {
         if (rmiResp != null && rmiResp.isSuccessful()) {
             for (var tradeDto : rmiResp.getTrades()) {
                 TradeExecution te = new TradeExecution(
-                        tradeDto.getTradeId(),
-                        tradeDto.getBuyerUserId(),
-                        tradeDto.getSellerUserId(),
+                        stock.getSymbol(),
                         tradeDto.getMakerOrderId(),
                         tradeDto.getTakerOrderId(),
+                        tradeDto.getBuyerUserId(),
+                        tradeDto.getSellerUserId(),
+                        side,
                         tradeDto.getPrice(),
-                        tradeDto.getQuantity()
+                        tradeDto.getQuantity(),
+                        tradeDto.getTotalValue() != null ? tradeDto.getTotalValue() : tradeDto.getPrice().multiply(tradeDto.getQuantity())
                 );
                 settleTrade(order, te, stock);
             }
@@ -291,7 +293,7 @@ public class TradingService {
             ns.sendNotification(user.getId(), title, msg, "ORDER_" + savedOrder.getStatus(), "ord-" + savedOrder.getId() + "-" + savedOrder.getStatus(), savedOrder.getId(), null, "/orders");
         });
         auditProvider.ifAvailable(as -> {
-            as.recordAudit(user.getId(), user.getUsername(), "ORDER_PLACED", "orders/" + savedOrder.getId(), "Order", savedOrder.getId(), "ORD-" + savedOrder.getId(), "SUCCESS", "Placed " + savedOrder.getSide() + " " + savedOrder.getQuantity() + " " + stock.getSymbol(), null);
+            as.recordAudit(user.getId(), user.getUsername(), "ORDER_PLACED", "orders/" + savedOrder.getId(), "Order", String.valueOf(savedOrder.getId()), "ORD-" + savedOrder.getId(), "SUCCESS", "Placed " + savedOrder.getSide() + " " + savedOrder.getQuantity() + " " + stock.getSymbol(), null);
         });
 
         return order;
@@ -514,7 +516,7 @@ public class TradingService {
             ns.sendNotification(user.getId(), "Order Modified", "Order #" + saved.getId() + " modified. Price: " + saved.getPrice() + ", Qty: " + saved.getQuantity(), "ORDER_MODIFIED", "ord-mod-" + saved.getId() + "-" + System.currentTimeMillis(), saved.getId(), null, "/orders");
         });
         auditProvider.ifAvailable(as -> {
-            as.recordAudit(user.getId(), user.getUsername(), "ORDER_MODIFIED", "orders/" + saved.getId(), "Order", saved.getId(), "ORD-" + saved.getId(), "SUCCESS", "Modified order price=" + newPrice + " qty=" + newQuantity, null);
+            as.recordAudit(user.getId(), user.getUsername(), "ORDER_MODIFIED", "orders/" + saved.getId(), "Order", String.valueOf(saved.getId()), "ORD-" + saved.getId(), "SUCCESS", "Modified order price=" + newPrice + " qty=" + newQuantity, null);
         });
 
         return saved;
@@ -555,7 +557,7 @@ public class TradingService {
             ns.sendNotification(user.getId(), "Order Cancelled", "Order #" + saved.getId() + " cancelled successfully", "ORDER_CANCELLED", "ord-cancel-" + saved.getId(), saved.getId(), null, "/orders");
         });
         auditProvider.ifAvailable(as -> {
-            as.recordAudit(user.getId(), user.getUsername(), "ORDER_CANCELLED", "orders/" + saved.getId(), "Order", saved.getId(), "ORD-" + saved.getId(), "SUCCESS", "Cancelled order #" + saved.getId(), null);
+            as.recordAudit(user.getId(), user.getUsername(), "ORDER_CANCELLED", "orders/" + saved.getId(), "Order", String.valueOf(saved.getId()), "ORD-" + saved.getId(), "SUCCESS", "Cancelled order #" + saved.getId(), null);
         });
 
         return saved;
@@ -574,7 +576,7 @@ public class TradingService {
                     ns.sendNotification(order.getUser().getId(), "Stop-Loss Activated", "Stop-loss triggered for order #" + order.getId() + " at $" + latestPrice, "STOP_LOSS_ACTIVATED", "stop-act-" + order.getId(), order.getId(), null, "/orders");
                 });
                 auditProvider.ifAvailable(as -> {
-                    as.recordAudit(order.getUser().getId(), order.getUser().getUsername(), "STOP_LOSS_TRIGGERED", "orders/" + order.getId(), "Order", order.getId(), "ORD-" + order.getId(), "SUCCESS", "Stop loss activated at price $" + latestPrice, null);
+                    as.recordAudit(order.getUser().getId(), order.getUser().getUsername(), "STOP_LOSS_TRIGGERED", "orders/" + order.getId(), "Order", String.valueOf(order.getId()), "ORD-" + order.getId(), "SUCCESS", "Stop loss activated at price $" + latestPrice, null);
                 });
 
                 // Convert to MARKET order and execute

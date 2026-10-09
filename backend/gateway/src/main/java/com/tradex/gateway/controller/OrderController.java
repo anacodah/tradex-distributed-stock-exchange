@@ -122,7 +122,7 @@ public class OrderController {
     public ResponseEntity<?> cancelOrder(Authentication auth, @PathVariable Long id) {
         try {
             return ResponseEntity.ok(tradingService.cancelOrder(auth.getName(), id));
-        } catch (IllegalStateException | RuntimeException e) {
+        } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage(), "message", e.getMessage()));
         }
     }

@@ -80,7 +80,7 @@ public class AdminController {
             map.put("id", u.getId());
             map.put("username", u.getUsername());
             map.put("email", u.getEmail());
-            map.put("fullName", u.getFullName());
+            map.put("enabled", u.isEnabled());
             map.put("roles", u.getRoles().stream().map(r -> r.getName()).toList());
             map.put("createdAt", u.getCreatedAt());
             result.add(map);
@@ -119,7 +119,7 @@ public class AdminController {
     public ResponseEntity<Map<String, Object>> toggleCircuitBreaker(@RequestBody Map<String, String> body) {
         String state = body.getOrDefault("state", "SUSPENDED");
         rmiClientService.setTradingState(state);
-        auditService.recordEvent("ADMIN_CIRCUIT_BREAKER", "ADMIN", "Trading state set to " + state, "CIRCUIT_BREAKER");
+        auditService.recordAudit(null, "ADMIN", "ADMIN_CIRCUIT_BREAKER", "/api/admin/trading-circuit-breaker", "CIRCUIT_BREAKER", state, null, "SUCCESS", "Trading state set to " + state, null);
         return ResponseEntity.ok(Map.of("status", "SUCCESS", "tradingState", state));
     }
 }

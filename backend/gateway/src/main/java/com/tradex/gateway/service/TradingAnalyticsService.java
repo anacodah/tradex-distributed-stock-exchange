@@ -46,12 +46,12 @@ public class TradingAnalyticsService {
         Map<String, Long> symbolTradeCounts = new HashMap<>();
 
         for (Trade trade : allTrades) {
-            BigDecimal tradeVal = (trade.getPrice() != null && trade.getQuantity() != null)
-                    ? trade.getPrice().multiply(trade.getQuantity())
-                    : BigDecimal.ZERO;
+            BigDecimal tradeVal = (trade.getExecutionPrice() != null && trade.getQuantity() != null)
+                    ? trade.getExecutionPrice().multiply(trade.getQuantity())
+                    : (trade.getTotalValue() != null ? trade.getTotalValue() : BigDecimal.ZERO);
             totalVolume = totalVolume.add(tradeVal);
 
-            String sym = trade.getStockSymbol();
+            String sym = trade.getStock() != null ? trade.getStock().getSymbol() : null;
             if (sym != null) {
                 symbolVolumes.put(sym, symbolVolumes.getOrDefault(sym, BigDecimal.ZERO).add(tradeVal));
                 symbolTradeCounts.put(sym, symbolTradeCounts.getOrDefault(sym, 0L) + 1L);
@@ -77,9 +77,9 @@ public class TradingAnalyticsService {
                     ? o.getPrice().multiply(o.getQuantity())
                     : BigDecimal.ZERO;
 
-            if (o.getSide() != null && "BUY".equalsIgnoreCase(o.getSide().name())) {
+            if (o.getSide() != null && "BUY".equalsIgnoreCase(o.getSide())) {
                 buyVol = buyVol.add(orderVal);
-            } else if (o.getSide() != null && "SELL".equalsIgnoreCase(o.getSide().name())) {
+            } else if (o.getSide() != null && "SELL".equalsIgnoreCase(o.getSide())) {
                 sellVol = sellVol.add(orderVal);
             }
         }

@@ -195,13 +195,13 @@ class Phase6TransactionAuditNotificationTest {
 
         when(tradeRepository.findByUserIdOrderByExecutedAtDesc(10L)).thenReturn(Collections.emptyList());
 
-        List<UnifiedTransactionDto> history = transactionService.getUnifiedTransactions("trader1", "ALL", 50);
+        List<UnifiedTransactionDto> history = transactionService.getUnifiedHistory("trader1", "ALL");
 
         assertNotNull(history);
         assertEquals(2, history.size());
 
-        boolean hasOrder = history.stream().anyMatch(h -> "ORDER".equals(h.getSourceType()) && h.getOrderId().equals(201L));
-        boolean hasWallet = history.stream().anyMatch(h -> "WALLET".equals(h.getSourceType()) && "CORR-ORD-201".equals(h.getCorrelationId()));
+        boolean hasOrder = history.stream().anyMatch(h -> "ORDER_SUBMISSION".equals(h.getType()) && h.getOrderId().equals(201L));
+        boolean hasWallet = history.stream().anyMatch(h -> "WALLET_DEBIT".equals(h.getType()) && "CORR-ORD-201".equals(h.getCorrelationId()));
 
         assertTrue(hasOrder, "Order event must be distinguishable");
         assertTrue(hasWallet, "Wallet movement must be distinguishable and trace order correlation");
@@ -213,6 +213,7 @@ class Phase6TransactionAuditNotificationTest {
 
     @Test
     void testCompensatingEntryDoesNotMutateHistory() {
+        when(userRepository.findByUsername("trader1")).thenReturn(Optional.of(testUser));
         when(walletRepository.findByUserIdForUpdate(10L)).thenReturn(Optional.of(testWallet));
         when(walletTxRepository.save(any(WalletTransaction.class))).thenAnswer(i -> {
             WalletTransaction tx = i.getArgument(0);
@@ -222,17 +223,16 @@ class Phase6TransactionAuditNotificationTest {
 
         BigDecimal compAmount = new BigDecimal("250.00");
         WalletTransaction compTx = transactionService.postCompensatingEntry(
-                10L, compAmount, true, "Reconciliation correction for missing credit", "WTX-ORIG-100"
+                "trader1", compAmount, "Reconciliation correction for missing credit", "WTX-ORIG-100"
         );
 
         assertNotNull(compTx);
         assertEquals("COMPENSATING_CREDIT", compTx.getType());
         assertEquals(new BigDecimal("10250.00"), testWallet.getBalance());
         assertEquals(new BigDecimal("10250.00"), testWallet.getAvailableBalance());
-        assertTrue(compTx.getDescription().contains("Compensating Adjustment"));
+        assertTrue(compTx.getDescription().contains("Compensating entry"));
         assertNotNull(compTx.getCorrelationId());
 
-        // Verifies audit log and notification were triggered
         verify(walletTxRepository, times(1)).save(any(WalletTransaction.class));
     }
 }

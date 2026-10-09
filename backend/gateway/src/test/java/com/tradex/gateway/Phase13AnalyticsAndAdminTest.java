@@ -44,16 +44,20 @@ class Phase13AnalyticsAndAdminTest {
 
     @Test
     void testTradingVolumeAndCountCalculationFromPersistedRecords() {
+        Stock s1 = new Stock();
+        s1.setSymbol("AAPL");
         Trade t1 = new Trade();
         t1.setTradeId("TRD-1");
-        t1.setStockSymbol("AAPL");
-        t1.setPrice(new BigDecimal("150.00"));
+        t1.setStock(s1);
+        t1.setExecutionPrice(new BigDecimal("150.00"));
         t1.setQuantity(new BigDecimal("10"));
 
+        Stock s2 = new Stock();
+        s2.setSymbol("TSLA");
         Trade t2 = new Trade();
         t2.setTradeId("TRD-2");
-        t2.setStockSymbol("TSLA");
-        t2.setPrice(new BigDecimal("200.00"));
+        t2.setStock(s2);
+        t2.setExecutionPrice(new BigDecimal("200.00"));
         t2.setQuantity(new BigDecimal("5"));
 
         when(tradeRepository.findAll()).thenReturn(List.of(t1, t2));
@@ -77,28 +81,28 @@ class Phase13AnalyticsAndAdminTest {
         Order o1 = new Order();
         o1.setId(1L);
         o1.setStatus("FILLED");
-        o1.setSide(OrderSide.BUY);
+        o1.setSide("BUY");
         o1.setPrice(new BigDecimal("100"));
         o1.setQuantity(new BigDecimal("2"));
 
         Order o2 = new Order();
         o2.setId(2L);
         o2.setStatus("CANCELLED");
-        o2.setSide(OrderSide.SELL);
+        o2.setSide("SELL");
         o2.setPrice(new BigDecimal("100"));
         o2.setQuantity(new BigDecimal("1"));
 
         Order o3 = new Order();
         o3.setId(3L);
         o3.setStatus("REJECTED");
-        o3.setSide(OrderSide.BUY);
+        o3.setSide("BUY");
         o3.setPrice(new BigDecimal("100"));
         o3.setQuantity(new BigDecimal("1"));
 
         Order o4 = new Order();
         o4.setId(4L);
         o4.setStatus("FILLED");
-        o4.setSide(OrderSide.BUY);
+        o4.setSide("BUY");
         o4.setPrice(new BigDecimal("100"));
         o4.setQuantity(new BigDecimal("1"));
 
@@ -123,14 +127,18 @@ class Phase13AnalyticsAndAdminTest {
 
     @Test
     void testMostActiveInstrumentsOrdering() {
+        Stock s1 = new Stock();
+        s1.setSymbol("MSFT");
         Trade t1 = new Trade();
-        t1.setStockSymbol("MSFT");
-        t1.setPrice(new BigDecimal("300"));
+        t1.setStock(s1);
+        t1.setExecutionPrice(new BigDecimal("300"));
         t1.setQuantity(new BigDecimal("20")); // $6000
 
+        Stock s2 = new Stock();
+        s2.setSymbol("NVDA");
         Trade t2 = new Trade();
-        t2.setStockSymbol("NVDA");
-        t2.setPrice(new BigDecimal("500"));
+        t2.setStock(s2);
+        t2.setExecutionPrice(new BigDecimal("500"));
         t2.setQuantity(new BigDecimal("20")); // $10000
 
         when(tradeRepository.findAll()).thenReturn(List.of(t1, t2));
