@@ -11,9 +11,11 @@ import java.util.*;
 public class DistributedProxyController {
 
     private final RestTemplate restTemplate;
+    private final com.tradex.gateway.client.NodeRmiClientService rmiClientService;
 
-    public DistributedProxyController(RestTemplate restTemplate) {
+    public DistributedProxyController(RestTemplate restTemplate, com.tradex.gateway.client.NodeRmiClientService rmiClientService) {
         this.restTemplate = restTemplate;
+        this.rmiClientService = rmiClientService;
     }
 
     private String getNodeUrl(String nodeId) {
@@ -178,23 +180,35 @@ public class DistributedProxyController {
     }
 
     // ==========================================
-    // ELECTION PROXIES
+    // ELECTION PROXIES (Phase 11 Shared Leader Management)
     // ==========================================
     @PostMapping("/election/bully/{initiatorNode}")
     public ResponseEntity<?> runBullyElection(@PathVariable String initiatorNode) {
         try {
-            return restTemplate.postForEntity(getNodeUrl(initiatorNode) + "/api/election/bully/start", null, Map.class);
+            com.tradex.common.rmi.dto.ElectionExecutionDto res = rmiClientService.triggerElection("BULLY", initiatorNode, "Operator initiated Bully election via " + initiatorNode);
+            return ResponseEntity.ok(res);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Initiator node " + initiatorNode + " unreachable"));
+            return ResponseEntity.badRequest().body(Map.of("error", "Bully election failed: " + e.getMessage()));
         }
     }
 
     @PostMapping("/election/ring/{initiatorNode}")
     public ResponseEntity<?> runRingElection(@PathVariable String initiatorNode) {
         try {
-            return restTemplate.postForEntity(getNodeUrl(initiatorNode) + "/api/election/ring/start", null, Map.class);
+            com.tradex.common.rmi.dto.ElectionExecutionDto res = rmiClientService.triggerElection("RING", initiatorNode, "Operator initiated Ring election via " + initiatorNode);
+            return ResponseEntity.ok(res);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Initiator node " + initiatorNode + " unreachable"));
+            return ResponseEntity.badRequest().body(Map.of("error", "Ring election failed: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/election/events")
+    public ResponseEntity<?> getElectionEvents() {
+        try {
+            String leader = rmiClientService.getCurrentActiveLeader();
+            return restTemplate.getForEntity("http://" + leader + ":8080/api/election/events", List.class);
+        } catch (Exception e) {
+            return ResponseEntity.ok(List.of());
         }
     }
 }

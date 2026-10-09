@@ -16,6 +16,8 @@ import TransactionHistory from './pages/TransactionHistory';
 import AuditTrail from './pages/AuditTrail';
 import ClusterNodes from './pages/ClusterNodes';
 import ReplicationDashboard from './pages/ReplicationDashboard';
+import FailoverRecovery from './pages/FailoverRecovery';
+import LoadBalancingDashboard from './pages/LoadBalancingDashboard';
 import './App.css';
 
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -49,6 +51,8 @@ function App() {
             <Route path="/elections" element={<AppLayout><Elections /></AppLayout>} />
             <Route path="/nodes" element={<AppLayout><ClusterNodes /></AppLayout>} />
             <Route path="/replication" element={<AppLayout><ReplicationDashboard /></AppLayout>} />
+            <Route path="/failover" element={<AppLayout><FailoverRecovery /></AppLayout>} />
+            <Route path="/load-balancer" element={<AppLayout><LoadBalancingDashboard /></AppLayout>} />
             
             {/* Redirect root to dashboard */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

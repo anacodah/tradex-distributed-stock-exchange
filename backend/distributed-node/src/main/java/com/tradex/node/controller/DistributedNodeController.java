@@ -25,18 +25,38 @@ public class DistributedNodeController {
     private final BerkeleyService berkeleyService;
     private final LeaderElectionService electionService;
     private final com.tradex.node.service.VectorClockService vectorClockService;
+    private final com.tradex.node.service.NodeRmiServiceImpl nodeRmiService;
     private final RestTemplate restTemplate;
 
     public DistributedNodeController(LamportClockService clockService,
                                      BerkeleyService berkeleyService,
                                      LeaderElectionService electionService,
                                      com.tradex.node.service.VectorClockService vectorClockService,
+                                     com.tradex.node.service.NodeRmiServiceImpl nodeRmiService,
                                      RestTemplate restTemplate) {
         this.clockService = clockService;
         this.berkeleyService = berkeleyService;
         this.electionService = electionService;
         this.vectorClockService = vectorClockService;
+        this.nodeRmiService = nodeRmiService;
         this.restTemplate = restTemplate;
+    }
+
+    // ==========================================
+    // CONTROLLED FAULT INJECTION APIS
+    // ==========================================
+    @PostMapping("/fault/crash")
+    public ResponseEntity<Map<String, Object>> simulateCrash() {
+        nodeRmiService.setSimulatedFailure(true);
+        clockService.logEvent("NODE_CRASHED", nodeName, "ALL", null, "Controlled Fault Injection: Simulating crash of " + nodeName);
+        return ResponseEntity.ok(Map.of("status", "SIMULATED_CRASH", "nodeName", nodeName, "healthy", false));
+    }
+
+    @PostMapping("/fault/recover")
+    public ResponseEntity<Map<String, Object>> recoverFromCrash() {
+        nodeRmiService.setSimulatedFailure(false);
+        clockService.logEvent("NODE_RECOVERED", nodeName, "ALL", null, "Node " + nodeName + " recovered from crash. State catch-up initialized.");
+        return ResponseEntity.ok(Map.of("status", "RECOVERED", "nodeName", nodeName, "healthy", true));
     }
 
     // ==========================================
@@ -44,6 +64,14 @@ public class DistributedNodeController {
     // ==========================================
     @GetMapping("/health")
     public ResponseEntity<Map<String, String>> health() {
+        if (nodeRmiService.isSimulatedFailure()) {
+            return ResponseEntity.status(503).body(Map.of(
+                    "status", "DOWN",
+                    "nodeId", nodeId,
+                    "nodeName", nodeName,
+                    "reason", "Controlled fault injection failure"
+            ));
+        }
         return ResponseEntity.ok(Map.of(
                 "status", "UP",
                 "nodeId", nodeId,
@@ -266,14 +294,13 @@ public class DistributedNodeController {
     }
 
     @PostMapping("/election/bully/start")
-    public ResponseEntity<Map<String, Object>> startBully() {
+    public ResponseEntity<com.tradex.common.rmi.dto.ElectionExecutionDto> startBully() {
         return ResponseEntity.ok(electionService.startBullyElection());
     }
 
     @PostMapping("/election/bully/receive-election")
     public ResponseEntity<Map<String, Object>> receiveBullyElection(@RequestBody Map<String, Object> body) {
         String initiator = (String) body.get("initiator");
-        // Higher priority node responds OK
         clockService.logEvent("ELECTION", initiator, nodeName, null, "Received Bully election from " + initiator + ", responding OK");
         return ResponseEntity.ok(Map.of("ok", true, "responder", nodeName));
     }
@@ -281,13 +308,14 @@ public class DistributedNodeController {
     @PostMapping("/election/bully/coordinator")
     public ResponseEntity<Map<String, Object>> receiveBullyCoordinator(@RequestBody Map<String, Object> body) {
         String newLeader = (String) body.get("leader");
-        electionService.setLeader(newLeader);
-        clockService.logEvent("LEADER_CHANGED", newLeader, nodeName, null, "New Bully Leader announced: " + newLeader);
-        return ResponseEntity.ok(Map.of("status", "ACKNOWLEDGED", "currentLeader", newLeader));
+        long epoch = body.containsKey("epoch") ? ((Number) body.get("epoch")).longValue() : electionService.getLeaderEpoch();
+        boolean accepted = electionService.updateLeader(newLeader, epoch);
+        clockService.logEvent("LEADER_CHANGED", newLeader, nodeName, null, "New Bully Leader: " + newLeader + " (Epoch #" + epoch + ", accepted=" + accepted + ")");
+        return ResponseEntity.ok(Map.of("status", accepted ? "ACKNOWLEDGED" : "STALE_REJECTED", "currentLeader", newLeader, "epoch", epoch));
     }
 
     @PostMapping("/election/ring/start")
-    public ResponseEntity<Map<String, Object>> startRing() {
+    public ResponseEntity<com.tradex.common.rmi.dto.ElectionExecutionDto> startRing() {
         return ResponseEntity.ok(electionService.startRingElection());
     }
 
@@ -310,13 +338,14 @@ public class DistributedNodeController {
     @PostMapping("/election/ring/coordinator")
     public ResponseEntity<Map<String, Object>> receiveRingCoordinator(@RequestBody Map<String, Object> body) {
         String newLeader = (String) body.get("leader");
-        electionService.setLeader(newLeader);
-        clockService.logEvent("LEADER_CHANGED", newLeader, nodeName, null, "New Ring Leader announced: " + newLeader);
-        return ResponseEntity.ok(Map.of("status", "ACKNOWLEDGED", "currentLeader", newLeader));
+        long epoch = body.containsKey("epoch") ? ((Number) body.get("epoch")).longValue() : electionService.getLeaderEpoch();
+        boolean accepted = electionService.updateLeader(newLeader, epoch);
+        clockService.logEvent("LEADER_CHANGED", newLeader, nodeName, null, "New Ring Leader: " + newLeader + " (Epoch #" + epoch + ", accepted=" + accepted + ")");
+        return ResponseEntity.ok(Map.of("status", accepted ? "ACKNOWLEDGED" : "STALE_REJECTED", "currentLeader", newLeader, "epoch", epoch));
     }
 
     @GetMapping("/election/events")
-    public ResponseEntity<List<Map<String, Object>>> getElectionHistory() {
+    public ResponseEntity<List<com.tradex.common.rmi.dto.ElectionExecutionDto>> getElectionHistory() {
         return ResponseEntity.ok(electionService.getElectionHistory());
     }
 }

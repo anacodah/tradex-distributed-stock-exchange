@@ -1,14 +1,21 @@
 package com.tradex.node.service;
 
+import com.tradex.common.rmi.dto.ElectionExecutionDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 public class LeaderElectionService {
+
+    private static final Logger log = LoggerFactory.getLogger(LeaderElectionService.class);
 
     @Value("${node.id:1}")
     private int nodeId;
@@ -17,13 +24,14 @@ public class LeaderElectionService {
     private String nodeName;
 
     private int priority;
-    private String currentLeader = "node3"; // Default initial highest node
-    private boolean isLeader = false;
+    private volatile String currentLeader = "node3"; // Default initial highest node
+    private volatile boolean isLeader = false;
+    private final AtomicLong leaderEpoch = new AtomicLong(3); // Start at initial bootstrap epoch 3
 
     private final RestTemplate restTemplate;
     private final LamportClockService lamportClockService;
 
-    private final List<Map<String, Object>> electionHistory = new ArrayList<>();
+    private final List<ElectionExecutionDto> electionHistory = new CopyOnWriteArrayList<>();
 
     public LeaderElectionService(RestTemplate restTemplate, LamportClockService lamportClockService) {
         this.restTemplate = restTemplate;
@@ -40,12 +48,28 @@ public class LeaderElectionService {
         return priority;
     }
 
-    public synchronized String getCurrentLeader() {
+    public String getCurrentLeader() {
         return currentLeader;
     }
 
-    public synchronized boolean isLeader() {
+    public boolean isLeader() {
         return isLeader;
+    }
+
+    public long getLeaderEpoch() {
+        return leaderEpoch.get();
+    }
+
+    public synchronized boolean updateLeader(String leader, long epoch) {
+        if (epoch < this.leaderEpoch.get()) {
+            log.warn("Ignored stale leader announcement from {} with epoch {} (current epoch is {})", leader, epoch, this.leaderEpoch.get());
+            return false;
+        }
+        this.leaderEpoch.set(epoch);
+        this.currentLeader = leader;
+        this.isLeader = nodeName.equals(leader);
+        log.info("Node {} updated authoritative leader to {} with epoch {}", nodeName, leader, epoch);
+        return true;
     }
 
     public synchronized void setLeader(String leader) {
@@ -56,11 +80,25 @@ public class LeaderElectionService {
     // ==========================================
     // BULLY ALGORITHM
     // ==========================================
-    public Map<String, Object> startBullyElection() {
+    public synchronized ElectionExecutionDto startBullyElection() {
         init();
+        long startTime = System.currentTimeMillis();
+        long newEpoch = leaderEpoch.incrementAndGet();
+
+        ElectionExecutionDto report = new ElectionExecutionDto();
+        report.setElectionId(UUID.randomUUID().toString());
+        report.setAlgorithm("BULLY");
+        report.setInitiator(nodeName);
+        report.setOldLeader(currentLeader);
+        report.setLeaderEpoch(newEpoch);
+        report.setStartTimeMs(startTime);
+
         List<String> messages = new ArrayList<>();
-        String oldLeader = currentLeader;
-        messages.add(nodeName + " initiated Bully election for new Primary Matching Engine (Priority " + priority + ")");
+        List<String> participants = new ArrayList<>();
+        List<String> unavailableNodes = new ArrayList<>();
+
+        participants.add(nodeName);
+        messages.add(nodeName + " initiated Bully election for new Primary Matching Engine (Priority " + priority + ", Epoch #" + newEpoch + ")");
 
         String[] allNodes = {"node1", "node2", "node3"};
         boolean higherNodeResponded = false;
@@ -69,19 +107,21 @@ public class LeaderElectionService {
         for (String peer : allNodes) {
             int peerPriority = Integer.parseInt(peer.replace("node", ""));
             if (peerPriority > this.priority) {
-                messages.add(nodeName + " -> " + peer + " : ELECTION");
+                messages.add(nodeName + " -> " + peer + " : ELECTION (Epoch " + newEpoch + ")");
                 try {
                     ResponseEntity<Map> response = restTemplate.postForEntity("http://" + peer + ":8080/api/election/bully/receive-election", 
-                            Map.of("initiator", nodeName, "priority", priority), Map.class);
+                            Map.of("initiator", nodeName, "priority", priority, "epoch", newEpoch), Map.class);
                     if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                         Boolean ok = (Boolean) response.getBody().get("ok");
                         if (Boolean.TRUE.equals(ok)) {
                             higherNodeResponded = true;
-                            messages.add(peer + " -> " + nodeName + " : OK");
+                            participants.add(peer);
+                            messages.add(peer + " -> " + nodeName + " : OK (Higher priority active)");
                         }
                     }
                 } catch (Exception e) {
-                    messages.add(peer + " is UNREACHABLE/OFFLINE");
+                    unavailableNodes.add(peer);
+                    messages.add(peer + " is UNREACHABLE / OFFLINE (Timeout)");
                 }
             }
         }
@@ -90,40 +130,44 @@ public class LeaderElectionService {
         if (!higherNodeResponded) {
             // No higher priority node responded, this node becomes leader!
             newLeader = nodeName;
-            setLeader(newLeader);
-            messages.add(nodeName + " : BECOME PRIMARY ENGINE (Highest active priority)");
-            announceCoordinatorBully(newLeader, messages);
+            updateLeader(newLeader, newEpoch);
+            messages.add(nodeName + " : BECOME AUTHORITATIVE PRIMARY LEADER (Highest reachable priority)");
+            announceCoordinatorBully(newLeader, newEpoch, messages, participants, unavailableNodes);
         } else {
-            // Wait for higher node to announce or query current leader
+            // Wait for higher node to announce
             newLeader = currentLeader;
         }
 
         lamportClockService.logEvent("ELECTION", nodeName, "ALL", null, 
-                "Bully Election completed. Old Engine: " + oldLeader + ", New Primary Engine: " + newLeader);
+                "Bully Election completed. Old Engine: " + report.getOldLeader() + ", New Primary Engine: " + newLeader + " (Epoch " + newEpoch + ")");
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("electionId", UUID.randomUUID().toString());
-        result.put("algorithm", "BULLY");
-        result.put("initiator", nodeName);
-        result.put("messages", messages);
-        result.put("oldLeader", oldLeader);
-        result.put("newLeader", newLeader);
-        result.put("timestamp", System.currentTimeMillis());
-        result.put("status", "COMPLETED");
+        long endTime = System.currentTimeMillis();
+        report.setNewLeader(newLeader);
+        report.setEndTimeMs(endTime);
+        report.setDurationMs(endTime - startTime);
+        report.setParticipants(participants);
+        report.setUnavailableNodes(unavailableNodes);
+        report.setMessages(messages);
+        report.setOutcome("SUCCESS");
+        report.setTradingState("AVAILABLE");
 
-        electionHistory.add(0, result);
-        return result;
+        electionHistory.add(0, report);
+        return report;
     }
 
-    private void announceCoordinatorBully(String leader, List<String> messages) {
+    private void announceCoordinatorBully(String leader, long epoch, List<String> messages, List<String> participants, List<String> unavailableNodes) {
         String[] allNodes = {"node1", "node2", "node3"};
         for (String peer : allNodes) {
             if (!peer.equals(nodeName)) {
                 try {
-                    messages.add(nodeName + " -> " + peer + " : COORDINATOR (" + leader + ")");
+                    messages.add(nodeName + " -> " + peer + " : COORDINATOR (" + leader + ", Epoch #" + epoch + ")");
                     restTemplate.postForEntity("http://" + peer + ":8080/api/election/bully/coordinator", 
-                            Map.of("leader", leader), Map.class);
-                } catch (Exception ignored) {}
+                            Map.of("leader", leader, "epoch", epoch), Map.class);
+                    if (!participants.contains(peer)) participants.add(peer);
+                } catch (Exception e) {
+                    if (!unavailableNodes.contains(peer)) unavailableNodes.add(peer);
+                    messages.add(peer + " failed to receive COORDINATOR announcement (Unreachable)");
+                }
             }
         }
     }
@@ -131,87 +175,108 @@ public class LeaderElectionService {
     // ==========================================
     // RING ALGORITHM
     // ==========================================
-    public Map<String, Object> startRingElection() {
+    public synchronized ElectionExecutionDto startRingElection() {
         init();
+        long startTime = System.currentTimeMillis();
+        long newEpoch = leaderEpoch.incrementAndGet();
+
+        ElectionExecutionDto report = new ElectionExecutionDto();
+        report.setElectionId(UUID.randomUUID().toString());
+        report.setAlgorithm("RING");
+        report.setInitiator(nodeName);
+        report.setOldLeader(currentLeader);
+        report.setLeaderEpoch(newEpoch);
+        report.setStartTimeMs(startTime);
+
         List<String> messages = new ArrayList<>();
         List<String> ringPath = new ArrayList<>();
+        List<String> unavailableNodes = new ArrayList<>();
         List<Integer> candidates = new ArrayList<>();
         
         candidates.add(priority);
         ringPath.add(nodeName);
-        messages.add(nodeName + " initiated Ring election for new Primary Matching Engine with priority " + priority);
+        messages.add(nodeName + " initiated Ring election for new Primary Matching Engine with priority " + priority + " (Epoch #" + newEpoch + ")");
 
-        String oldLeader = currentLeader;
         String nextNode = getNextRingNode(nodeName);
 
-        // Pass election token around the ring
-        boolean completed = passRingMessage(nextNode, candidates, ringPath, messages, nodeName);
+        // Pass election token around the logical ring
+        passRingMessage(nextNode, candidates, ringPath, unavailableNodes, messages, nodeName, newEpoch);
 
         int maxPriority = Collections.max(candidates);
         String newLeader = "node" + maxPriority;
-        setLeader(newLeader);
+        updateLeader(newLeader, newEpoch);
 
-        // Announce leader around the ring
-        announceRingCoordinator(getNextRingNode(nodeName), newLeader, messages, nodeName);
+        // Announce leader coordinator around the ring
+        announceRingCoordinator(getNextRingNode(nodeName), newLeader, newEpoch, messages, unavailableNodes, nodeName);
 
         lamportClockService.logEvent("ELECTION", nodeName, "ALL", null, 
-                "Ring Election completed. Path: " + ringPath + ", New Primary Engine: " + newLeader);
+                "Ring Election completed. Path: " + ringPath + ", New Primary Engine: " + newLeader + " (Epoch #" + newEpoch + ")");
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("electionId", UUID.randomUUID().toString());
-        result.put("algorithm", "RING");
-        result.put("initiator", nodeName);
-        result.put("ringPath", ringPath);
-        result.put("candidates", candidates);
-        result.put("messages", messages);
-        result.put("oldLeader", oldLeader);
-        result.put("newLeader", newLeader);
-        result.put("timestamp", System.currentTimeMillis());
-        result.put("status", "COMPLETED");
+        long endTime = System.currentTimeMillis();
+        report.setNewLeader(newLeader);
+        report.setEndTimeMs(endTime);
+        report.setDurationMs(endTime - startTime);
+        report.setRingPath(ringPath);
+        report.setParticipants(new ArrayList<>(ringPath));
+        report.setUnavailableNodes(unavailableNodes);
+        report.setMessages(messages);
+        report.setOutcome("SUCCESS");
+        report.setTradingState("AVAILABLE");
 
-        electionHistory.add(0, result);
-        return result;
+        electionHistory.add(0, report);
+        return report;
     }
 
-    private boolean passRingMessage(String targetNode, List<Integer> candidates, List<String> ringPath, List<String> messages, String originNode) {
+    private boolean passRingMessage(String targetNode, List<Integer> candidates, List<String> ringPath, List<String> unavailableNodes,
+                                    List<String> messages, String originNode, long epoch) {
         if (targetNode.equals(originNode)) {
-            messages.add("Ring election token completed full circuit back to " + originNode);
+            messages.add("Ring election token completed full circuit back to initiator " + originNode);
             return true;
         }
 
         try {
-            messages.add(ringPath.get(ringPath.size() - 1) + " -> " + targetNode + " : ELECTION_TOKEN " + candidates);
+            messages.add(ringPath.get(ringPath.size() - 1) + " -> " + targetNode + " : ELECTION_TOKEN candidates=" + candidates + " (Epoch #" + epoch + ")");
             Map<String, Object> req = new HashMap<>();
             req.put("originNode", originNode);
             req.put("candidates", candidates);
             req.put("ringPath", ringPath);
+            req.put("epoch", epoch);
 
             ResponseEntity<Map> response = restTemplate.postForEntity("http://" + targetNode + ":8080/api/election/ring/pass", req, Map.class);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 List<Integer> updatedCandidates = (List<Integer>) response.getBody().get("candidates");
                 List<String> updatedPath = (List<String>) response.getBody().get("ringPath");
-                if (updatedCandidates != null) candidates.clear(); candidates.addAll(updatedCandidates);
-                if (updatedPath != null) ringPath.clear(); ringPath.addAll(updatedPath);
-                return true;
+                if (updatedCandidates != null) {
+                    candidates.clear();
+                    candidates.addAll(updatedCandidates);
+                }
+                if (updatedPath != null) {
+                    ringPath.clear();
+                    ringPath.addAll(updatedPath);
+                }
+                return passRingMessage(getNextRingNode(targetNode), candidates, ringPath, unavailableNodes, messages, originNode, epoch);
             }
         } catch (Exception e) {
-            messages.add(targetNode + " is UNREACHABLE. Skipping to next ring node.");
+            unavailableNodes.add(targetNode);
+            messages.add(targetNode + " is UNREACHABLE in Ring topology. Bypassing to next ring hop.");
             String bypassNode = getNextRingNode(targetNode);
-            return passRingMessage(bypassNode, candidates, ringPath, messages, originNode);
+            return passRingMessage(bypassNode, candidates, ringPath, unavailableNodes, messages, originNode, epoch);
         }
         return false;
     }
 
-    private void announceRingCoordinator(String targetNode, String newLeader, List<String> messages, String originNode) {
+    private void announceRingCoordinator(String targetNode, String newLeader, long epoch, List<String> messages, List<String> unavailableNodes, String originNode) {
         if (targetNode.equals(originNode)) return;
 
         try {
-            messages.add(originNode + " -> " + targetNode + " : COORDINATOR " + newLeader);
-            restTemplate.postForEntity("http://" + targetNode + ":8080/api/election/ring/coordinator", Map.of("leader", newLeader), Map.class);
-            announceRingCoordinator(getNextRingNode(targetNode), newLeader, messages, originNode);
+            messages.add(originNode + " -> " + targetNode + " : COORDINATOR " + newLeader + " (Epoch #" + epoch + ")");
+            restTemplate.postForEntity("http://" + targetNode + ":8080/api/election/ring/coordinator", 
+                    Map.of("leader", newLeader, "epoch", epoch), Map.class);
+            announceRingCoordinator(getNextRingNode(targetNode), newLeader, epoch, messages, unavailableNodes, originNode);
         } catch (Exception e) {
-            // Bypass unreachable
-            announceRingCoordinator(getNextRingNode(targetNode), newLeader, messages, originNode);
+            if (!unavailableNodes.contains(targetNode)) unavailableNodes.add(targetNode);
+            messages.add(targetNode + " failed to receive coordinator (Bypassing).");
+            announceRingCoordinator(getNextRingNode(targetNode), newLeader, epoch, messages, unavailableNodes, originNode);
         }
     }
 
@@ -224,7 +289,7 @@ public class LeaderElectionService {
         }
     }
 
-    public List<Map<String, Object>> getElectionHistory() {
-        return electionHistory;
+    public List<ElectionExecutionDto> getElectionHistory() {
+        return Collections.unmodifiableList(electionHistory);
     }
 }

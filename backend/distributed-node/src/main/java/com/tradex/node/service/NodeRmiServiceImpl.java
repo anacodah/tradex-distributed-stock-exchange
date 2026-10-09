@@ -49,6 +49,18 @@ public class NodeRmiServiceImpl extends UnicastRemoteObject implements RemoteNod
     private final List<ReplicationEventDto> replicationLog = new CopyOnWriteArrayList<>();
     private final AtomicLong replicationSequence = new AtomicLong(0);
 
+    // Controlled fault-injection flag for actual network / server-side failure
+    private volatile boolean simulatedFailure = false;
+
+    public boolean isSimulatedFailure() {
+        return simulatedFailure;
+    }
+
+    public void setSimulatedFailure(boolean simulatedFailure) {
+        this.simulatedFailure = simulatedFailure;
+        log.warn("Node {} simulated failure set to: {}", nodeName, simulatedFailure);
+    }
+
     public NodeRmiServiceImpl(
             LeaderElectionService leaderElectionService,
             LamportClockService lamportClockService,
@@ -64,6 +76,10 @@ public class NodeRmiServiceImpl extends UnicastRemoteObject implements RemoteNod
 
     @Override
     public NodeStatusDto getNodeStatus() throws RemoteException {
+        if (simulatedFailure) {
+            throw new RemoteException("Node " + nodeName + " is UNAVAILABLE (Controlled Fault Injection: Simulating Hardware/Network Partition)");
+        }
+
         Map<String, Object> poolMetrics = new HashMap<>();
         poolMetrics.put("activeWorkers", orderProcessingExecutor.getActiveCount());
         poolMetrics.put("corePoolSize", orderProcessingExecutor.getCorePoolSize());
@@ -88,6 +104,10 @@ public class NodeRmiServiceImpl extends UnicastRemoteObject implements RemoteNod
 
     @Override
     public RemoteOrderResponseDto submitOrder(RemoteOrderRequestDto request) throws RemoteException {
+        if (simulatedFailure) {
+            throw new RemoteException("Node " + nodeName + " is UNAVAILABLE (Controlled Fault Injection: Simulating Hardware/Network Partition)");
+        }
+
         // Enforce leader authoritative processing
         if (!leaderElectionService.isLeader()) {
             RemoteOrderResponseDto resp = new RemoteOrderResponseDto();

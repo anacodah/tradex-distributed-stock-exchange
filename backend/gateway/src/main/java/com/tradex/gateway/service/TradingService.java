@@ -115,6 +115,12 @@ public class TradingService {
             }
         }
 
+        // Trading Safety Check: reject new writes if cluster is recovering or suspended
+        var rmiClientCheck = rmiClientProvider.getIfAvailable();
+        if (rmiClientCheck != null && "SUSPENDED".equalsIgnoreCase(rmiClientCheck.getTradingState())) {
+            throw new IllegalStateException("Trading is temporarily SUSPENDED: Cluster leader election / state recovery in progress.");
+        }
+
         // 2. Validate Inputs
         if (req.getSymbol() == null || req.getSymbol().isBlank()) {
             throw new IllegalArgumentException("Symbol is required");

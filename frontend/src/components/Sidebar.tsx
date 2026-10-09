@@ -16,7 +16,8 @@ import {
   GitMerge, 
   Settings,
   LogOut,
-  Bell
+  Bell,
+  Activity
 } from 'lucide-react';
 
 const Sidebar: React.FC = () => {
@@ -136,12 +137,12 @@ const Sidebar: React.FC = () => {
           <NavLink to="/replication" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
             <Database size={18} /> Replication (Phase 9)
           </NavLink>
-          <div className="nav-link disabled" title="Coming in Phase 10">
-            <GitMerge size={18} /> Load Balancing (Phase 10)
-          </div>
-          <div className="nav-link disabled" title="Coming in Phase 5">
-            <Settings size={18} /> Fault Tolerance (Phase 5)
-          </div>
+          <NavLink to="/failover" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
+            <Activity size={18} /> Failover & Faults (P10)
+          </NavLink>
+          <NavLink to="/load-balancer" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>
+            <GitMerge size={18} /> Load Balancing (P12)
+          </NavLink>
         </div>
       </nav>
     </aside>

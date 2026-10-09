@@ -38,9 +38,12 @@ import java.util.Map;
 public class MarketController {
 
     private final MarketService marketService;
+    private final com.tradex.gateway.service.DistributedLoadBalancerService loadBalancerService;
 
-    public MarketController(MarketService marketService) {
+    public MarketController(MarketService marketService,
+                            com.tradex.gateway.service.DistributedLoadBalancerService loadBalancerService) {
         this.marketService = marketService;
+        this.loadBalancerService = loadBalancerService;
     }
 
     // ------------------------------------------------------------------
@@ -49,10 +52,22 @@ public class MarketController {
 
     @GetMapping("/stocks")
     public ResponseEntity<List<Stock>> getAllStocks(@RequestParam(required = false) String search) {
-        if (search != null && !search.isBlank()) {
-            return ResponseEntity.ok(marketService.searchStocks(search));
+        String targetNode = loadBalancerService.selectTargetNode("READ_ONLY_MARKET_DATA");
+        long start = System.currentTimeMillis();
+        loadBalancerService.startRequest(targetNode);
+        try {
+            List<Stock> res;
+            if (search != null && !search.isBlank()) {
+                res = marketService.searchStocks(search);
+            } else {
+                res = marketService.getAllStocks();
+            }
+            loadBalancerService.completeRequest(targetNode, System.currentTimeMillis() - start, true);
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            loadBalancerService.completeRequest(targetNode, System.currentTimeMillis() - start, false);
+            throw e;
         }
-        return ResponseEntity.ok(marketService.getAllStocks());
     }
 
     @GetMapping("/stocks/{symbol}")
@@ -71,7 +86,17 @@ public class MarketController {
      */
     @GetMapping("/prices")
     public ResponseEntity<List<PriceSnapshotDto>> getAllPrices() {
-        return ResponseEntity.ok(marketService.getAllSnapshots());
+        String targetNode = loadBalancerService.selectTargetNode("READ_ONLY_MARKET_DATA");
+        long start = System.currentTimeMillis();
+        loadBalancerService.startRequest(targetNode);
+        try {
+            List<PriceSnapshotDto> res = marketService.getAllSnapshots();
+            loadBalancerService.completeRequest(targetNode, System.currentTimeMillis() - start, true);
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            loadBalancerService.completeRequest(targetNode, System.currentTimeMillis() - start, false);
+            throw e;
+        }
     }
 
     /**
