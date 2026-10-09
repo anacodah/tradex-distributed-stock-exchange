@@ -142,8 +142,10 @@ class Phase7RmiAndMultithreadingTest {
         assertEquals(totalSubmissions, successfulMatches.get());
 
         // Check pool metrics
-        assertTrue(executor.getCompletedTaskCount() >= totalSubmissions);
         executor.shutdown();
+        boolean terminated = executor.awaitTermination(3, TimeUnit.SECONDS);
+        assertTrue(terminated);
+        assertTrue(executor.getCompletedTaskCount() >= totalSubmissions);
     }
 
     @Test

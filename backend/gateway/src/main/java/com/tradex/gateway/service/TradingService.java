@@ -116,7 +116,7 @@ public class TradingService {
         }
 
         // Trading Safety Check: reject new writes if cluster is recovering or suspended
-        var rmiClientCheck = rmiClientProvider.getIfAvailable();
+        var rmiClientCheck = (rmiClientProvider != null) ? rmiClientProvider.getIfAvailable() : null;
         if (rmiClientCheck != null && "SUSPENDED".equalsIgnoreCase(rmiClientCheck.getTradingState())) {
             throw new IllegalStateException("Trading is temporarily SUSPENDED: Cluster leader election / state recovery in progress.");
         }
@@ -200,7 +200,7 @@ public class TradingService {
 
         // 5. Submit to Authoritative Matching Engine on Cluster Leader via Java RMI
         com.tradex.common.rmi.dto.RemoteOrderResponseDto rmiResp = null;
-        var rmiClient = rmiClientProvider.getIfAvailable();
+        var rmiClient = (rmiClientProvider != null) ? rmiClientProvider.getIfAvailable() : null;
         if (rmiClient != null) {
             try {
                 com.tradex.common.rmi.dto.RemoteOrderRequestDto rmiReq = new com.tradex.common.rmi.dto.RemoteOrderRequestDto();
@@ -287,14 +287,18 @@ public class TradingService {
 
         // Notifications & Audit for Order Placement
         final Order savedOrder = order;
-        notificationProvider.ifAvailable(ns -> {
-            String title = "Order " + savedOrder.getStatus();
-            String msg = savedOrder.getSide() + " " + savedOrder.getQuantity() + " " + stock.getSymbol() + " (" + savedOrder.getOrderType() + ") status: " + savedOrder.getStatus();
-            ns.sendNotification(user.getId(), title, msg, "ORDER_" + savedOrder.getStatus(), "ord-" + savedOrder.getId() + "-" + savedOrder.getStatus(), savedOrder.getId(), null, "/orders");
-        });
-        auditProvider.ifAvailable(as -> {
-            as.recordAudit(user.getId(), user.getUsername(), "ORDER_PLACED", "orders/" + savedOrder.getId(), "Order", String.valueOf(savedOrder.getId()), "ORD-" + savedOrder.getId(), "SUCCESS", "Placed " + savedOrder.getSide() + " " + savedOrder.getQuantity() + " " + stock.getSymbol(), null);
-        });
+        if (notificationProvider != null) {
+            notificationProvider.ifAvailable(ns -> {
+                String title = "Order " + savedOrder.getStatus();
+                String msg = savedOrder.getSide() + " " + savedOrder.getQuantity() + " " + stock.getSymbol() + " (" + savedOrder.getOrderType() + ") status: " + savedOrder.getStatus();
+                ns.sendNotification(user.getId(), title, msg, "ORDER_" + savedOrder.getStatus(), "ord-" + savedOrder.getId() + "-" + savedOrder.getStatus(), savedOrder.getId(), null, "/orders");
+            });
+        }
+        if (auditProvider != null) {
+            auditProvider.ifAvailable(as -> {
+                as.recordAudit(user.getId(), user.getUsername(), "ORDER_PLACED", "orders/" + savedOrder.getId(), "Order", String.valueOf(savedOrder.getId()), "ORD-" + savedOrder.getId(), "SUCCESS", "Placed " + savedOrder.getSide() + " " + savedOrder.getQuantity() + " " + stock.getSymbol(), null);
+            });
+        }
 
         return order;
     }
@@ -414,13 +418,17 @@ public class TradingService {
         takerOrder.setExecutionPrice(exec.getPrice());
 
         // Notifications & Audit
-        notificationProvider.ifAvailable(ns -> {
-            ns.sendNotification(buyer.getId(), "Trade Executed", "Bought " + exec.getQuantity() + " " + stock.getSymbol() + " @ $" + exec.getPrice(), "TRADE_EXECUTED", "trade-buy-" + exec.getTradeId(), takerOrder.getId(), exec.getTradeId(), "/orders");
-            ns.sendNotification(seller.getId(), "Trade Executed", "Sold " + exec.getQuantity() + " " + stock.getSymbol() + " @ $" + exec.getPrice(), "TRADE_EXECUTED", "trade-sell-" + exec.getTradeId(), exec.getMakerOrderId(), exec.getTradeId(), "/orders");
-        });
-        auditProvider.ifAvailable(as -> {
-            as.recordAudit(buyer.getId(), buyer.getUsername(), "TRADE_EXECUTED", "trades/" + exec.getTradeId(), "Trade", exec.getTradeId(), "ORD-" + takerOrder.getId(), "SUCCESS", "Trade execution fill", null);
-        });
+        if (notificationProvider != null) {
+            notificationProvider.ifAvailable(ns -> {
+                ns.sendNotification(buyer.getId(), "Trade Executed", "Bought " + exec.getQuantity() + " " + stock.getSymbol() + " @ $" + exec.getPrice(), "TRADE_EXECUTED", "trade-buy-" + exec.getTradeId(), takerOrder.getId(), exec.getTradeId(), "/orders");
+                ns.sendNotification(seller.getId(), "Trade Executed", "Sold " + exec.getQuantity() + " " + stock.getSymbol() + " @ $" + exec.getPrice(), "TRADE_EXECUTED", "trade-sell-" + exec.getTradeId(), exec.getMakerOrderId(), exec.getTradeId(), "/orders");
+            });
+        }
+        if (auditProvider != null) {
+            auditProvider.ifAvailable(as -> {
+                as.recordAudit(buyer.getId(), buyer.getUsername(), "TRADE_EXECUTED", "trades/" + exec.getTradeId(), "Trade", exec.getTradeId(), "ORD-" + takerOrder.getId(), "SUCCESS", "Trade execution fill", null);
+            });
+        }
     }
 
     private void refundUnfilledReservations(Order order, BigDecimal unfilledQty, Stock stock) {
@@ -512,12 +520,16 @@ public class TradingService {
         recordOrderEvent(order.getId(), "MODIFIED", "Order modified. New price: " + newPrice + ", new qty: " + newQuantity);
 
         Order saved = orderRepository.save(order);
-        notificationProvider.ifAvailable(ns -> {
-            ns.sendNotification(user.getId(), "Order Modified", "Order #" + saved.getId() + " modified. Price: " + saved.getPrice() + ", Qty: " + saved.getQuantity(), "ORDER_MODIFIED", "ord-mod-" + saved.getId() + "-" + System.currentTimeMillis(), saved.getId(), null, "/orders");
-        });
-        auditProvider.ifAvailable(as -> {
-            as.recordAudit(user.getId(), user.getUsername(), "ORDER_MODIFIED", "orders/" + saved.getId(), "Order", String.valueOf(saved.getId()), "ORD-" + saved.getId(), "SUCCESS", "Modified order price=" + newPrice + " qty=" + newQuantity, null);
-        });
+        if (notificationProvider != null) {
+            notificationProvider.ifAvailable(ns -> {
+                ns.sendNotification(user.getId(), "Order Modified", "Order #" + saved.getId() + " modified. Price: " + saved.getPrice() + ", Qty: " + saved.getQuantity(), "ORDER_MODIFIED", "ord-mod-" + saved.getId() + "-" + System.currentTimeMillis(), saved.getId(), null, "/orders");
+            });
+        }
+        if (auditProvider != null) {
+            auditProvider.ifAvailable(as -> {
+                as.recordAudit(user.getId(), user.getUsername(), "ORDER_MODIFIED", "orders/" + saved.getId(), "Order", String.valueOf(saved.getId()), "ORD-" + saved.getId(), "SUCCESS", "Modified order price=" + newPrice + " qty=" + newQuantity, null);
+            });
+        }
 
         return saved;
     }
@@ -553,12 +565,16 @@ public class TradingService {
         recordOrderEvent(order.getId(), "CANCELLED", "Order cancelled by user");
 
         Order saved = orderRepository.save(order);
-        notificationProvider.ifAvailable(ns -> {
-            ns.sendNotification(user.getId(), "Order Cancelled", "Order #" + saved.getId() + " cancelled successfully", "ORDER_CANCELLED", "ord-cancel-" + saved.getId(), saved.getId(), null, "/orders");
-        });
-        auditProvider.ifAvailable(as -> {
-            as.recordAudit(user.getId(), user.getUsername(), "ORDER_CANCELLED", "orders/" + saved.getId(), "Order", String.valueOf(saved.getId()), "ORD-" + saved.getId(), "SUCCESS", "Cancelled order #" + saved.getId(), null);
-        });
+        if (notificationProvider != null) {
+            notificationProvider.ifAvailable(ns -> {
+                ns.sendNotification(user.getId(), "Order Cancelled", "Order #" + saved.getId() + " cancelled successfully", "ORDER_CANCELLED", "ord-cancel-" + saved.getId(), saved.getId(), null, "/orders");
+            });
+        }
+        if (auditProvider != null) {
+            auditProvider.ifAvailable(as -> {
+                as.recordAudit(user.getId(), user.getUsername(), "ORDER_CANCELLED", "orders/" + saved.getId(), "Order", String.valueOf(saved.getId()), "ORD-" + saved.getId(), "SUCCESS", "Cancelled order #" + saved.getId(), null);
+            });
+        }
 
         return saved;
     }
@@ -572,12 +588,16 @@ public class TradingService {
         for (BookOrder bo : triggered) {
             orderRepository.findById(bo.getOrderId()).ifPresent(order -> {
                 log.info("Stop-loss triggered for order #{} on {}", order.getId(), symbol);
-                notificationProvider.ifAvailable(ns -> {
-                    ns.sendNotification(order.getUser().getId(), "Stop-Loss Activated", "Stop-loss triggered for order #" + order.getId() + " at $" + latestPrice, "STOP_LOSS_ACTIVATED", "stop-act-" + order.getId(), order.getId(), null, "/orders");
-                });
-                auditProvider.ifAvailable(as -> {
-                    as.recordAudit(order.getUser().getId(), order.getUser().getUsername(), "STOP_LOSS_TRIGGERED", "orders/" + order.getId(), "Order", String.valueOf(order.getId()), "ORD-" + order.getId(), "SUCCESS", "Stop loss activated at price $" + latestPrice, null);
-                });
+                if (notificationProvider != null) {
+                    notificationProvider.ifAvailable(ns -> {
+                        ns.sendNotification(order.getUser().getId(), "Stop-Loss Activated", "Stop-loss triggered for order #" + order.getId() + " at $" + latestPrice, "STOP_LOSS_ACTIVATED", "stop-act-" + order.getId(), order.getId(), null, "/orders");
+                    });
+                }
+                if (auditProvider != null) {
+                    auditProvider.ifAvailable(as -> {
+                        as.recordAudit(order.getUser().getId(), order.getUser().getUsername(), "STOP_LOSS_TRIGGERED", "orders/" + order.getId(), "Order", String.valueOf(order.getId()), "ORD-" + order.getId(), "SUCCESS", "Stop loss activated at price $" + latestPrice, null);
+                    });
+                }
 
                 // Convert to MARKET order and execute
                 bo.setPrice(latestPrice);

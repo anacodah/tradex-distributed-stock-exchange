@@ -33,6 +33,12 @@ class AuthServiceTest {
     private RoleRepository roleRepository;
 
     @Mock
+    private com.tradex.common.repository.UserProfileRepository userProfileRepository;
+
+    @Mock
+    private WalletService walletService;
+
+    @Mock
     private PasswordEncoder passwordEncoder;
 
     @Mock
@@ -58,6 +64,11 @@ class AuthServiceTest {
 
         when(userRepository.existsByUsername("testuser")).thenReturn(false);
         when(userRepository.existsByEmail("test@test.com")).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(i -> {
+            User u = i.getArgument(0);
+            u.setId(1L);
+            return u;
+        });
         
         Role role = new Role();
         role.setName("ROLE_USER");

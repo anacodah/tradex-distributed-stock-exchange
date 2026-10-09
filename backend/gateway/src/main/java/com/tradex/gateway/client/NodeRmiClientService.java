@@ -20,10 +20,10 @@ public class NodeRmiClientService {
     private static final Logger log = LoggerFactory.getLogger(NodeRmiClientService.class);
 
     @Value("${cluster.nodes:node1:1099,node2:1099,node3:1099}")
-    private String clusterNodesConfig;
+    private String clusterNodesConfig = "node1:1099,node2:1099,node3:1099";
 
     @Value("${cluster.leader.name:node3}")
-    private String defaultLeaderName;
+    private String defaultLeaderName = "node3";
 
     // Cache of active node stubs
     private final Map<String, RemoteNodeService> nodeStubCache = new ConcurrentHashMap<>();
@@ -86,9 +86,9 @@ public class NodeRmiClientService {
         String targetHost = targetLeaderNode;
         int targetPort = 1099;
 
-        Map<String, Object> telemetry = new ConcurrentHashMap<>();
+        Map<String, Object> telemetry = new HashMap<>();
         telemetry.put("requestId", requestId);
-        telemetry.put("correlationId", request.getCorrelationId());
+        telemetry.put("correlationId", request.getCorrelationId() != null ? request.getCorrelationId() : "N/A");
         telemetry.put("sourceNode", "gateway");
         telemetry.put("destinationNode", targetLeaderNode);
         telemetry.put("communicationMethod", "Java RMI (TCP Registry)");
@@ -279,22 +279,31 @@ public class NodeRmiClientService {
                 log.warn("HTTP election endpoint on {} failed: {}", candidate, e.getMessage());
             }
 
+            String highestSurviving = "node1";
+            for (String node : new String[]{"node3", "node2", "node1"}) {
+                HeartbeatStatusDto hb = heartbeatStatusMap.get(node);
+                if (hb != null && hb.isReachable() && !"CONFIRMED_UNAVAILABLE".equals(hb.getHealthStatus())) {
+                    highestSurviving = node;
+                    break;
+                }
+            }
+
             if (result != null && result.getNewLeader() != null) {
                 this.currentLeaderEpoch = result.getLeaderEpoch() > 0 ? result.getLeaderEpoch() : this.currentLeaderEpoch + 1;
                 this.currentActiveLeader = result.getNewLeader();
                 result.setOutcome("SUCCESS");
             } else {
                 this.currentLeaderEpoch++;
-                this.currentActiveLeader = candidate;
+                this.currentActiveLeader = highestSurviving;
                 result = new ElectionExecutionDto();
                 result.setElectionId(UUID.randomUUID().toString());
                 result.setAlgorithm(algorithm);
-                result.setInitiator(candidate);
+                result.setInitiator(candidate != null ? candidate : "node1");
                 result.setOldLeader(currentActiveLeader);
-                result.setNewLeader(candidate);
+                result.setNewLeader(highestSurviving);
                 result.setLeaderEpoch(currentLeaderEpoch);
                 result.setOutcome("SUCCESS");
-                result.setMessages(List.of("Fallback direct election on " + candidate + " with epoch #" + currentLeaderEpoch));
+                result.setMessages(List.of("Fallback direct election on " + highestSurviving + " with epoch #" + currentLeaderEpoch));
             }
 
             this.failoverStatus = "RECOVERING_STATE";
