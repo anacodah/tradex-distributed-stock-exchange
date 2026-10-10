@@ -18,7 +18,8 @@ const Register: React.FC = () => {
       login(response.data.token, response.data.user);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Registration failed');
+      const msg = err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : 'Registration failed. Please check your details and try again.');
+      setError(msg);
     }
   };
 
