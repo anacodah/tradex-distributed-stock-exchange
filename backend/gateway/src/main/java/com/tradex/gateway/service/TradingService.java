@@ -92,8 +92,51 @@ public class TradingService {
                 }
             }
             log.info("Initialized MatchingEngine with {} active resting orders", restingOrders.size());
+
+            // Asynchronously sync resting orders to authoritative cluster leader once reachable
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    Thread.sleep(3500);
+                    syncRestingOrdersToLeader();
+                } catch (Exception ignored) {}
+            });
         } catch (Exception e) {
             log.warn("Could not load initial resting orders into memory: {}", e.getMessage());
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public void syncRestingOrdersToLeader() {
+        var rmiClient = (rmiClientProvider != null) ? rmiClientProvider.getIfAvailable() : null;
+        if (rmiClient == null) return;
+        try {
+            List<Order> restingOrders = orderRepository.findActiveRestingOrders();
+            int count = 0;
+            for (Order o : restingOrders) {
+                if (o.getStatus().equals("OPEN") || o.getStatus().equals("PARTIALLY_FILLED")) {
+                    com.tradex.common.rmi.dto.RemoteOrderRequestDto rmiReq = new com.tradex.common.rmi.dto.RemoteOrderRequestDto();
+                    rmiReq.setRequestId("SYNC-INIT-" + o.getId());
+                    rmiReq.setCorrelationId("INIT-RESTING-" + o.getId());
+                    rmiReq.setOrderId(o.getId());
+                    rmiReq.setUserId(o.getUser().getId());
+                    rmiReq.setUsername(o.getUser().getUsername());
+                    rmiReq.setSymbol(o.getStock().getSymbol());
+                    rmiReq.setSide(o.getSide());
+                    rmiReq.setOrderType(o.getOrderType());
+                    rmiReq.setPrice(o.getPrice());
+                    rmiReq.setStopPrice(o.getStopPrice());
+                    BigDecimal remaining = o.getQuantity().subtract(o.getFilledQuantity() != null ? o.getFilledQuantity() : BigDecimal.ZERO);
+                    rmiReq.setQuantity(remaining);
+                    rmiReq.setSourceTimestamp(System.currentTimeMillis());
+                    var resp = rmiClient.routeOrderToLeader(rmiReq);
+                    if (resp != null && resp.isSuccessful()) {
+                        count++;
+                    }
+                }
+            }
+            log.info("Synchronized {}/{} active resting orders to cluster leader", count, restingOrders.size());
+        } catch (Exception e) {
+            log.warn("Failed syncing resting orders to cluster leader: {}", e.getMessage());
         }
     }
 
@@ -245,6 +288,12 @@ public class TradingService {
             }
             order.setStatus(rmiResp.getStatus());
             order.setFilledQuantity(rmiResp.getFilledQuantity() != null ? rmiResp.getFilledQuantity() : BigDecimal.ZERO);
+            BigDecimal remainingQty = order.getQuantity().subtract(order.getFilledQuantity());
+            if (OrderStatus.REJECTED.name().equals(rmiResp.getStatus())) {
+                refundUnfilledReservations(order, order.getQuantity(), stock);
+            } else if (orderType == OrderType.MARKET && remainingQty.compareTo(BigDecimal.ZERO) > 0) {
+                refundUnfilledReservations(order, remainingQty, stock);
+            }
         } else {
             // Local fallback matching engine
             BookOrder bookOrder = new BookOrder(

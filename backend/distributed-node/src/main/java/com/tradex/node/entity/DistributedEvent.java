@@ -16,6 +16,7 @@ public class DistributedEvent {
     private long lamportTimestamp;
 
     private String sourceNode;
+    @Column(name = "dest_node")
     private String destinationNode;
     private Long receivedTimestamp;
 

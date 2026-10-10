@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import jakarta.annotation.PostConstruct;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
@@ -38,9 +39,12 @@ public class LeaderElectionService {
         this.lamportClockService = lamportClockService;
     }
 
+    @PostConstruct
     public synchronized void init() {
         this.priority = nodeId; // Priority 1, 2, 3
         this.isLeader = nodeName.equals(currentLeader);
+        log.info("LeaderElectionService initialized for node {} (priority={}, currentLeader={}, isLeader={})",
+                nodeName, priority, currentLeader, isLeader);
     }
 
     public synchronized int getPriority() {

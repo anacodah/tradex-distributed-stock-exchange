@@ -43,9 +43,17 @@ public class NodeRmiClientService {
     private volatile String lastFailoverReason = "Initial Cluster Bootstrap";
 
     private final RestTemplate restTemplate;
+    private final org.springframework.beans.factory.ObjectProvider<com.tradex.gateway.service.TradingService> tradingServiceProvider;
 
     public NodeRmiClientService(RestTemplate restTemplate) {
+        this(restTemplate, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public NodeRmiClientService(RestTemplate restTemplate,
+                                org.springframework.beans.factory.ObjectProvider<com.tradex.gateway.service.TradingService> tradingServiceProvider) {
         this.restTemplate = restTemplate;
+        this.tradingServiceProvider = tradingServiceProvider;
     }
 
     public RemoteNodeService getStub(String host, int port) {
@@ -337,6 +345,15 @@ public class NodeRmiClientService {
         log.info("RECOVERING TRADING STATE: Validating epoch {}, syncing matching engine memory on leader {}", newEpoch, newLeader);
         // Clean stale node stubs
         nodeStubCache.clear();
+        if (tradingServiceProvider != null) {
+            tradingServiceProvider.ifAvailable(ts -> {
+                try {
+                    ts.syncRestingOrdersToLeader();
+                } catch (Exception e) {
+                    log.warn("Could not sync resting orders during state recovery: {}", e.getMessage());
+                }
+            });
+        }
     }
 
     /**
