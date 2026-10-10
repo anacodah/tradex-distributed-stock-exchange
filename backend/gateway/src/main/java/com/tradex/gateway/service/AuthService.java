@@ -90,10 +90,12 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
+        User user = userRepository.findByUsername(request.getUsername())
+                .or(() -> userRepository.findByEmail(request.getUsername()))
+                .orElseThrow(() -> new RuntimeException("User not found"));
         authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
+                new UsernamePasswordAuthenticationToken(user.getUsername(), request.getPassword())
         );
-        User user = userRepository.findByUsername(request.getUsername()).orElseThrow();
         String jwt = jwtService.generateToken(new org.springframework.security.core.userdetails.User(
                 user.getUsername(), user.getPassword(),
                 user.getRoles().stream()
