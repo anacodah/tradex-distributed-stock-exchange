@@ -5,10 +5,12 @@ import { useNavigate } from 'react-router-dom';
 
 export interface NotificationItem {
   id: number;
+  userId?: number;
   title: string;
   message: string;
   type: string;
-  read: boolean;
+  read?: boolean;
+  isRead?: boolean;
   orderId?: number;
   tradeId?: string;
   linkUrl?: string;
@@ -17,9 +19,10 @@ export interface NotificationItem {
 
 interface NotificationCenterProps {
   onClose?: () => void;
+  onUnreadCountChange?: (count: number) => void;
 }
 
-export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose }) => {
+export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose, onUnreadCountChange }) => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [unreadCount, setUnreadCount] = useState<number>(0);
@@ -30,10 +33,16 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
   const fetchNotifications = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/notifications?page=0&size=30');
-      setNotifications(res.data.content || []);
+      const res = await api.get('/notifications?page=0&size=50');
+      const list: NotificationItem[] = Array.isArray(res.data) 
+        ? res.data 
+        : (res.data?.content || []);
+      setNotifications(list);
+
       const countRes = await api.get('/notifications/unread-count');
-      setUnreadCount(countRes.data.unreadCount || 0);
+      const count = countRes.data?.unreadCount ?? 0;
+      setUnreadCount(count);
+      if (onUnreadCountChange) onUnreadCountChange(count);
     } catch (err) {
       console.error('Failed to load notifications:', err);
     } finally {
@@ -46,35 +55,45 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
 
     // Setup WebSocket push
     const token = localStorage.getItem('token');
-    const wsUrl = `ws://localhost:8080/ws/notifications${token ? `?token=${token}` : ''}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = window.location.hostname === 'localhost' ? 'localhost:8080' : window.location.host;
+    const wsUrl = `${wsProtocol}//${wsHost}/ws/notifications${token ? `?token=${token}` : ''}`;
 
-    ws.onopen = () => {
-      setConnected(true);
-    };
+    try {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      try {
-        const notif: NotificationItem = JSON.parse(event.data);
-        setNotifications((prev) => {
-          // Deduplicate
-          if (prev.some((n) => n.id === notif.id)) return prev;
-          return [notif, ...prev];
-        });
-        setUnreadCount((c) => c + 1);
-      } catch (e) {
-        console.error('Failed to parse incoming notification:', e);
-      }
-    };
+      ws.onopen = () => {
+        setConnected(true);
+      };
 
-    ws.onclose = () => {
-      setConnected(false);
-    };
+      ws.onmessage = (event) => {
+        try {
+          const notif: NotificationItem = JSON.parse(event.data);
+          setNotifications((prev) => {
+            if (prev.some((n) => n.id === notif.id)) return prev;
+            return [notif, ...prev];
+          });
+          setUnreadCount((c) => {
+            const next = c + 1;
+            if (onUnreadCountChange) onUnreadCountChange(next);
+            return next;
+          });
+        } catch (e) {
+          console.error('Failed to parse incoming notification:', e);
+        }
+      };
+
+      ws.onclose = () => {
+        setConnected(false);
+      };
+    } catch (e) {
+      console.warn('WebSocket notifications unavailable, fallback to HTTP polling.');
+    }
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+        wsRef.current.close();
       }
     };
   }, []);
@@ -83,9 +102,13 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
     try {
       await api.put(`/notifications/${id}/read`);
       setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+        prev.map((n) => (n.id === id ? { ...n, read: true, isRead: true } : n))
       );
-      setUnreadCount((c) => Math.max(0, c - 1));
+      setUnreadCount((c) => {
+        const next = Math.max(0, c - 1);
+        if (onUnreadCountChange) onUnreadCountChange(next);
+        return next;
+      });
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
     }
@@ -93,16 +116,18 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
 
   const handleMarkAllAsRead = async () => {
     try {
-      await api.put('/notifications/mark-all-read');
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      await api.put('/notifications/read-all');
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true, isRead: true })));
       setUnreadCount(0);
+      if (onUnreadCountChange) onUnreadCountChange(0);
     } catch (err) {
       console.error('Failed to mark all as read:', err);
     }
   };
 
   const handleNavigate = (notif: NotificationItem) => {
-    if (!notif.read) {
+    const isRead = notif.isRead !== undefined ? notif.isRead : (notif.read ?? false);
+    if (!isRead) {
       handleMarkAsRead(notif.id);
     }
     if (notif.linkUrl) {
@@ -115,15 +140,31 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
     switch (type) {
       case 'ORDER_FILLED':
       case 'TRADE_EXECUTED':
-        return <CheckCircle2 size={16} className="text-success" />;
+        return <CheckCircle2 size={16} color="#34d399" />;
       case 'ORDER_REJECTED':
       case 'SECURITY_ALERT':
-        return <AlertCircle size={16} className="text-danger" />;
+        return <AlertCircle size={16} color="#f87171" />;
       case 'STOP_LOSS_ACTIVATED':
       case 'ORDER_CANCELLED':
-        return <AlertTriangle size={16} className="text-warning" />;
+        return <AlertTriangle size={16} color="#fbbf24" />;
       default:
-        return <Info size={16} className="text-info" />;
+        return <Info size={16} color="#60a5fa" />;
+    }
+  };
+
+  const formatTime = (isoString: string) => {
+    try {
+      const date = new Date(isoString);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    } catch (e) {
+      return '';
     }
   };
 
@@ -131,20 +172,20 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
     <div className="notification-panel">
       <div className="notification-header">
         <div className="title-area">
-          <Bell size={18} />
+          <Bell size={18} color="#38bdf8" />
           <h3>Notifications</h3>
           <span className={`ws-badge ${connected ? 'connected' : 'disconnected'}`}>
-            {connected ? 'LIVE' : 'POLLING'}
+            {connected ? '● LIVE' : '○ POLLING'}
           </span>
           {unreadCount > 0 && <span className="unread-badge">{unreadCount}</span>}
         </div>
         <div className="actions-area">
           {unreadCount > 0 && (
-            <button className="mark-all-btn" onClick={handleMarkAllAsRead} title="Mark all read">
+            <button className="mark-all-btn" onClick={handleMarkAllAsRead} title="Mark all as read">
               <Check size={14} /> Read all
             </button>
           )}
-          <button className="refresh-btn" onClick={fetchNotifications} title="Refresh">
+          <button className="refresh-btn" onClick={fetchNotifications} title="Refresh notifications">
             <RefreshCw size={14} className={loading ? 'spinning' : ''} />
           </button>
           {onClose && (
@@ -161,43 +202,46 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
         ) : notifications.length === 0 ? (
           <div className="empty-state">No notifications yet.</div>
         ) : (
-          notifications.map((n) => (
-            <div
-              key={n.id}
-              className={`notification-item ${n.read ? 'read' : 'unread'}`}
-              onClick={() => handleNavigate(n)}
-            >
-              <div className="notif-icon">{getIcon(n.type)}</div>
-              <div className="notif-body">
-                <div className="notif-title-row">
-                  <span className="notif-title">{n.title}</span>
-                  <span className="notif-time">{new Date(n.createdAt).toLocaleTimeString()}</span>
+          notifications.map((n) => {
+            const isRead = n.isRead !== undefined ? n.isRead : (n.read ?? false);
+            return (
+              <div
+                key={n.id}
+                className={`notification-item ${isRead ? 'read' : 'unread'}`}
+                onClick={() => handleNavigate(n)}
+              >
+                <div className="notif-icon">{getIcon(n.type)}</div>
+                <div className="notif-body">
+                  <div className="notif-title-row">
+                    <span className="notif-title">{n.title}</span>
+                    <span className="notif-time">{formatTime(n.createdAt)}</span>
+                  </div>
+                  <div className="notif-message">{n.message}</div>
+                  <div className="notif-footer">
+                    {n.orderId && <span className="order-tag">Order #{n.orderId}</span>}
+                    {n.tradeId && <span className="trade-tag">Trade #{n.tradeId.substring(0, 12)}</span>}
+                    {n.linkUrl && (
+                      <span className="link-tag">
+                        View <ExternalLink size={11} />
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="notif-message">{n.message}</div>
-                <div className="notif-footer">
-                  {n.orderId && <span className="order-tag">Order #{n.orderId}</span>}
-                  {n.tradeId && <span className="trade-tag">Trade #{n.tradeId}</span>}
-                  {n.linkUrl && (
-                    <span className="link-tag">
-                      View <ExternalLink size={11} />
-                    </span>
-                  )}
-                </div>
+                {!isRead && (
+                  <button
+                    className="read-dot-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleMarkAsRead(n.id);
+                    }}
+                    title="Mark as read"
+                  >
+                    <span className="unread-dot" />
+                  </button>
+                )}
               </div>
-              {!n.read && (
-                <button
-                  className="read-dot-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleMarkAsRead(n.id);
-                  }}
-                  title="Mark as read"
-                >
-                  <span className="unread-dot" />
-                </button>
-              )}
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

@@ -254,19 +254,30 @@ const Market: React.FC = () => {
         headers: { 'Idempotency-Key': idempotencyKey }
       });
 
-      setMessage({
-        text: `Order #${res.data.id} (${orderSide} ${quantity} ${selectedStock.symbol} [${orderType}]) submitted! Status: ${res.data.status}`,
-        type: 'success',
-      });
+      if (res.data.status === 'REJECTED') {
+        setMessage({
+          text: `Order #${res.data.id} (${orderSide} ${quantity} ${selectedStock.symbol}) was REJECTED by matching engine (insufficient liquidity in order book).`,
+          type: 'error',
+        });
+      } else {
+        setMessage({
+          text: `Order #${res.data.id} (${orderSide} ${quantity} ${selectedStock.symbol} [${orderType}]) submitted! Status: ${res.data.status}`,
+          type: 'success',
+        });
+      }
       fetchStocks();
       fetchBalances(selectedStock.symbol);
       fetchOrderBook(selectedStock.symbol);
     } catch (err: any) {
+      console.error('Order placement failed:', err);
+      const errMsg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        (typeof err.response?.data === 'string' ? err.response.data : null) ||
+        err.message ||
+        'Failed to place order. Check wallet balance or holdings.';
       setMessage({
-        text:
-          err.response?.data?.message ||
-          err.response?.data?.error ||
-          'Failed to place order. Check wallet balance or holdings.',
+        text: errMsg,
         type: 'error',
       });
     } finally {

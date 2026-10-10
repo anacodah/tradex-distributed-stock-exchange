@@ -71,7 +71,11 @@ public class OrderController {
     @PostMapping
     public ResponseEntity<?> placeOrder(Authentication auth,
                                         @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+                                        @RequestHeader(value = "X-Idempotency-Key", required = false) String xIdempotencyKey,
                                         @RequestBody Map<String, Object> body) {
+        String effectiveIdempotencyKey = (idempotencyKey != null && !idempotencyKey.isBlank()) 
+                ? idempotencyKey 
+                : xIdempotencyKey;
         try {
             OrderRequest req = new OrderRequest();
             req.setSymbol((String) body.get("symbol"));
@@ -95,12 +99,14 @@ public class OrderController {
                 req.setClientOrderId(body.get("clientOrderId").toString());
             }
 
-            Order order = tradingService.placeOrder(auth.getName(), req, idempotencyKey);
+            Order order = tradingService.placeOrder(auth.getName(), req, effectiveIdempotencyKey);
             return ResponseEntity.ok(order);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage(), "error", "Validation error"));
+            String msg = e.getMessage() != null ? e.getMessage() : "Validation error";
+            return ResponseEntity.badRequest().body(Map.of("message", msg, "error", "Validation error"));
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage(), "error", e.getMessage()));
+            String msg = e.getMessage() != null ? e.getMessage() : "Error placing order";
+            return ResponseEntity.badRequest().body(Map.of("message", msg, "error", msg));
         }
     }
 

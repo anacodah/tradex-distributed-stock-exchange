@@ -106,6 +106,7 @@ public class LeaderElectionService {
 
         String[] allNodes = {"node1", "node2", "node3"};
         boolean higherNodeResponded = false;
+        String highestResponder = null;
 
         // Send ELECTION message to nodes with higher priority
         for (String peer : allNodes) {
@@ -119,6 +120,7 @@ public class LeaderElectionService {
                         Boolean ok = (Boolean) response.getBody().get("ok");
                         if (Boolean.TRUE.equals(ok)) {
                             higherNodeResponded = true;
+                            highestResponder = peer;
                             participants.add(peer);
                             messages.add(peer + " -> " + nodeName + " : OK (Higher priority active)");
                         }
@@ -138,8 +140,10 @@ public class LeaderElectionService {
             messages.add(nodeName + " : BECOME AUTHORITATIVE PRIMARY LEADER (Highest reachable priority)");
             announceCoordinatorBully(newLeader, newEpoch, messages, participants, unavailableNodes);
         } else {
-            // Wait for higher node to announce
-            newLeader = currentLeader;
+            // Highest responding node takes over as leader
+            newLeader = highestResponder != null ? highestResponder : currentLeader;
+            updateLeader(newLeader, newEpoch);
+            messages.add(newLeader + " : HIGHER PRIORITY ACTIVE LEADER CONFIRMED (Epoch #" + newEpoch + ")");
         }
 
         lamportClockService.logEvent("ELECTION", nodeName, "ALL", null, 

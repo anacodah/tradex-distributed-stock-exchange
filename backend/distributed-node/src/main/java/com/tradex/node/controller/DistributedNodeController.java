@@ -84,16 +84,17 @@ public class DistributedNodeController {
     // ==========================================
     @GetMapping("/node/info")
     public ResponseEntity<Map<String, Object>> nodeInfo() {
+        boolean failed = nodeRmiService.isSimulatedFailure();
         Map<String, Object> info = new HashMap<>();
         info.put("nodeId", nodeId);
         info.put("nodeName", nodeName);
-        info.put("status", "ONLINE");
+        info.put("status", failed ? "CRASHED" : "ONLINE");
         info.put("priority", electionService.getPriority());
         info.put("leader", electionService.getCurrentLeader());
-        info.put("isLeader", electionService.isLeader());
+        info.put("isLeader", failed ? false : electionService.isLeader());
         info.put("lamportClock", clockService.getClock());
         info.put("clockOffsetMs", berkeleyService.getClockOffsetMs());
-        info.put("health", "GOOD");
+        info.put("health", failed ? "DOWN" : "GOOD");
         info.put("timestamp", System.currentTimeMillis());
         return ResponseEntity.ok(info);
     }
@@ -295,18 +296,29 @@ public class DistributedNodeController {
 
     @PostMapping("/election/bully/start")
     public ResponseEntity<com.tradex.common.rmi.dto.ElectionExecutionDto> startBully() {
+        if (nodeRmiService.isSimulatedFailure()) {
+            return ResponseEntity.status(503).build();
+        }
         return ResponseEntity.ok(electionService.startBullyElection());
     }
 
     @PostMapping("/election/bully/receive-election")
     public ResponseEntity<Map<String, Object>> receiveBullyElection(@RequestBody Map<String, Object> body) {
+        if (nodeRmiService.isSimulatedFailure()) {
+            return ResponseEntity.status(503).body(Map.of("ok", false, "error", "Node crashed"));
+        }
         String initiator = (String) body.get("initiator");
+        long epoch = body.containsKey("epoch") ? ((Number) body.get("epoch")).longValue() : electionService.getLeaderEpoch();
         clockService.logEvent("ELECTION", initiator, nodeName, null, "Received Bully election from " + initiator + ", responding OK");
+        electionService.updateLeader(nodeName, epoch);
         return ResponseEntity.ok(Map.of("ok", true, "responder", nodeName));
     }
 
     @PostMapping("/election/bully/coordinator")
     public ResponseEntity<Map<String, Object>> receiveBullyCoordinator(@RequestBody Map<String, Object> body) {
+        if (nodeRmiService.isSimulatedFailure()) {
+            return ResponseEntity.status(503).body(Map.of("error", "Node crashed"));
+        }
         String newLeader = (String) body.get("leader");
         long epoch = body.containsKey("epoch") ? ((Number) body.get("epoch")).longValue() : electionService.getLeaderEpoch();
         boolean accepted = electionService.updateLeader(newLeader, epoch);
@@ -316,11 +328,17 @@ public class DistributedNodeController {
 
     @PostMapping("/election/ring/start")
     public ResponseEntity<com.tradex.common.rmi.dto.ElectionExecutionDto> startRing() {
+        if (nodeRmiService.isSimulatedFailure()) {
+            return ResponseEntity.status(503).build();
+        }
         return ResponseEntity.ok(electionService.startRingElection());
     }
 
     @PostMapping("/election/ring/pass")
     public ResponseEntity<Map<String, Object>> passRingToken(@RequestBody Map<String, Object> body) {
+        if (nodeRmiService.isSimulatedFailure()) {
+            return ResponseEntity.status(503).body(Map.of("error", "Node crashed"));
+        }
         List<Integer> candidates = new ArrayList<>((List<Integer>) body.get("candidates"));
         List<String> ringPath = new ArrayList<>((List<String>) body.get("ringPath"));
 
@@ -337,6 +355,9 @@ public class DistributedNodeController {
 
     @PostMapping("/election/ring/coordinator")
     public ResponseEntity<Map<String, Object>> receiveRingCoordinator(@RequestBody Map<String, Object> body) {
+        if (nodeRmiService.isSimulatedFailure()) {
+            return ResponseEntity.status(503).body(Map.of("error", "Node crashed"));
+        }
         String newLeader = (String) body.get("leader");
         long epoch = body.containsKey("epoch") ? ((Number) body.get("epoch")).longValue() : electionService.getLeaderEpoch();
         boolean accepted = electionService.updateLeader(newLeader, epoch);

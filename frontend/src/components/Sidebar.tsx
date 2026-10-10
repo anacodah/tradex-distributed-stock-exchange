@@ -88,16 +88,32 @@ const Sidebar: React.FC = () => {
       </div>
 
       {showNotifications && (
-        <div style={{
-          position: 'fixed',
-          top: '20px',
-          left: '260px',
-          zIndex: 1000,
-          width: '380px',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)'
-        }}>
-          <NotificationCenter onClose={() => setShowNotifications(false)} />
-        </div>
+        <>
+          <div 
+            onClick={() => setShowNotifications(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 9998,
+              background: 'rgba(0, 0, 0, 0.3)',
+              backdropFilter: 'blur(2px)',
+            }}
+          />
+          <div style={{
+            position: 'fixed',
+            top: '70px',
+            left: '260px',
+            zIndex: 9999,
+            width: '420px',
+            maxWidth: 'calc(100vw - 280px)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 25px rgba(59, 130, 246, 0.2)'
+          }}>
+            <NotificationCenter 
+              onClose={() => setShowNotifications(false)} 
+              onUnreadCountChange={(count) => setUnreadCount(count)}
+            />
+          </div>
+        </>
       )}
 
       <nav className="sidebar-nav">

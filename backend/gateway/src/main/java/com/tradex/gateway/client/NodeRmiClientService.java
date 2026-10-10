@@ -41,6 +41,7 @@ public class NodeRmiClientService {
     private volatile String failoverStatus = "STABLE"; // STABLE, ELECTION_IN_PROGRESS, RECOVERING_STATE
     private volatile long lastFailoverTimestamp = System.currentTimeMillis();
     private volatile String lastFailoverReason = "Initial Cluster Bootstrap";
+    private volatile long lastElectionTriggerTime = 0;
 
     private final RestTemplate restTemplate;
     private final org.springframework.beans.factory.ObjectProvider<com.tradex.gateway.service.TradingService> tradingServiceProvider;
@@ -74,7 +75,8 @@ public class NodeRmiClientService {
      * Enforces split-brain fencing and safe trading suspension when leadership is compromised.
      */
     public RemoteOrderResponseDto routeOrderToLeader(RemoteOrderRequestDto request) {
-        if ("SUSPENDED".equalsIgnoreCase(tradingState)) {
+        boolean isSync = request.getRequestId() != null && request.getRequestId().startsWith("SYNC-");
+        if ("SUSPENDED".equalsIgnoreCase(tradingState) && !isSync) {
             log.warn("Trading suspended: cannot accept order #{} during failover election/recovery", request.getOrderId());
             RemoteOrderResponseDto suspResp = new RemoteOrderResponseDto();
             suspResp.setRequestId(request.getRequestId());
@@ -215,11 +217,17 @@ public class NodeRmiClientService {
 
         // Adjust trading system state based on cluster quorum and health
         if (healthyCount == totalNodes) {
-            if ("STABLE".equals(failoverStatus) && !"SUSPENDED".equals(tradingState)) {
+            if ("STABLE".equals(failoverStatus)) {
+                if ("SUSPENDED".equals(this.tradingState)) {
+                    log.info("Cluster restored to full health with {} nodes. Resuming trading.", healthyCount);
+                    if (tradingServiceProvider != null) {
+                        tradingServiceProvider.ifAvailable(com.tradex.gateway.service.TradingService::syncRestingOrdersToLeader);
+                    }
+                }
                 this.tradingState = "AVAILABLE";
             }
         } else if (healthyCount > 0) {
-            if (!"SUSPENDED".equals(tradingState)) {
+            if ("STABLE".equals(failoverStatus)) {
                 this.tradingState = "DEGRADED";
             }
         } else {
@@ -228,8 +236,13 @@ public class NodeRmiClientService {
     }
 
     private synchronized void checkAndHandleLeaderUnavailability(String leaderNode, String reason) {
+        long now = System.currentTimeMillis();
+        if (now - lastElectionTriggerTime < 5000) {
+            return;
+        }
         HeartbeatStatusDto hb = heartbeatStatusMap.get(leaderNode);
         if (hb != null && (hb.getMissedHeartbeatCount() >= 2 || "CONFIRMED_UNAVAILABLE".equals(hb.getHealthStatus()))) {
+            lastElectionTriggerTime = now;
             log.warn("Leader {} confirmed down or suspected unavailable. Initiating automatic failover! Reason: {}", leaderNode, reason);
             triggerFailoverElection(reason);
         }
